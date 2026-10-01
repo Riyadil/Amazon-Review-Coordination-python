@@ -13,44 +13,246 @@
 #   5. Builds a user coordination graph
 #   6. Finds connected components using label propagation
 #   7. Calculates coordination scores
-#   8. Saves enriched data as Parquet
+#   8. Saves enriched data as Parquet by category and year
 #
-# Configuration is stored separately in config.py
+# Configuration and helper functions are included in this file.
 # ============================================================
 
 import re
 import sys
 import math
+import csv
+
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterable, Optional, Tuple
 
 from pyspark import SparkConf, SparkContext
 from pyspark.sql import SQLContext, Row
-
-from config import (
-    REVIEWS_PATH,
-    METADATA_PATH,
-    OUTPUT_PATH,
-
-    APP_NAME,
-    MASTER,
-    DRIVER_MEMORY,
-
-    TIME_BUCKET_HOURS,
-    LARGE_GROUP_THRESHOLD,
-    LARGE_GROUP_BUCKET_HOURS,
-
-    MIN_REPEATED_GROUPS,
-    LABEL_PROPAGATION_ITERATIONS,
-    TOP_N,
-
-    SIZE_WEIGHT,
-    DENSITY_WEIGHT,
-    REPETITION_WEIGHT,
-
-    SIZE_NORMALIZATION,
-    REPETITION_NORMALIZATION,
-
-    MIN_TEXT_LENGTH
+from pyspark.sql.types import (
+    StructType, StructField, StringType, DoubleType,
+    LongType, BooleanType, IntegerType
 )
+
+# ==============================
+# File Paths
+# ==============================
+
+REVIEWS_PATH = "data/All_Beauty.jsonl"
+METADATA_PATH = "data/meta_All_Beauty.jsonl"
+# Use a new directory for each run. Existing output is not overwritten.
+OUTPUT_PATH = "output/amazon_output"
+
+# Local CSV for manual review of repeated user pairs.
+# Use a new filename for each run; existing audits are not overwritten.
+PAIR_AUDIT_PATH = "output/repeated_pair_audit.csv"
+
+
+# ==============================
+# Spark Configuration
+# ==============================
+
+APP_NAME = "Amazon Review Coordination Analysis"
+MASTER = "local[*]"
+
+DRIVER_MEMORY = "4g"
+
+
+# ==============================
+# Pipeline Configuration
+# ==============================
+
+# Initial time bucket
+TIME_BUCKET_HOURS = 24
+
+# If a 24-hour group has more than this many reviews,
+# split it into smaller buckets.
+LARGE_GROUP_THRESHOLD = 100
+
+# Size of smaller time buckets
+LARGE_GROUP_BUCKET_HOURS = 6
+
+# Minimum number of distinct product-time groups
+# in which a user pair must appear.
+MIN_REPEATED_GROUPS = 3
+
+# Number of iterations for connected components
+LABEL_PROPAGATION_ITERATIONS = 20
+
+# Number of top coordination groups to display
+TOP_N = 20
+
+
+# ==============================
+# Coordination Score
+# ==============================
+
+SIZE_WEIGHT = 0.35
+DENSITY_WEIGHT = 0.35
+REPETITION_WEIGHT = 0.30
+
+SIZE_NORMALIZATION = 20.0
+REPETITION_NORMALIZATION = 10.0
+
+
+# ==============================
+# Review Processing
+# ==============================
+
+# Used by the text_eligible flag for the planned text-similarity stage.
+# Short reviews still contribute to the co-review graph.
+MIN_TEXT_LENGTH = 30
+
+
+# ============================================================
+# Review Year
+# ============================================================
+
+def get_review_year(timestamp: int) -> int:
+    """
+    Extract the UTC year from a timestamp already in seconds.
+    """
+
+    if isinstance(timestamp, bool) or not isinstance(timestamp, int):
+        raise ValueError("Timestamp must be an integer in seconds.")
+
+    return datetime.fromtimestamp(timestamp, timezone.utc).year
+
+
+# ============================================================
+# Rating Deviation
+# ============================================================
+
+def get_rating_deviation(
+    rating: Optional[float],
+    catalog_average_rating: Optional[float]
+) -> Optional[float]:
+    """
+    Return absolute rating deviation, or None for missing ratings.
+    """
+
+    for value in (rating, catalog_average_rating):
+
+        if value is not None and (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or not 1.0 <= value <= 5.0
+        ):
+            raise ValueError("Ratings must be finite numbers from 1 to 5.")
+
+    if rating is None or catalog_average_rating is None:
+        return None
+
+    return abs(float(rating) - float(catalog_average_rating))
+
+
+# ============================================================
+# Text Eligibility
+# ============================================================
+
+def is_text_eligible(text: str, minimum_length: int) -> bool:
+    """
+    Check cleaned text length without removing a review from the graph.
+    """
+
+    if not isinstance(text, str):
+        raise ValueError("Review text must be a cleaned string.")
+
+    if (
+        isinstance(minimum_length, bool)
+        or not isinstance(minimum_length, int)
+        or minimum_length < 1
+    ):
+        raise ValueError("Minimum text length must be a positive integer.")
+
+    return len(text) >= minimum_length
+
+
+# ============================================================
+# Reviewer ID Check
+# ============================================================
+
+def get_audit_base(user_id: str) -> str:
+    """
+    Remove trailing numeric suffixes only for the audit comparison.
+    """
+
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("Reviewer ID must be a non-empty string.")
+
+    base_id = re.sub(r"(?:_[0-9]+)+$", "", user_id)
+
+    if not base_id.strip():
+        raise ValueError("Reviewer ID has no base before its suffix.")
+
+    return base_id
+
+
+# ============================================================
+# Save Pair Audit
+# ============================================================
+
+def write_pair_audit(
+    edges: Iterable[Tuple[str, str, int]],
+    output_path: str
+) -> int:
+    """
+    Write repeated graph edges to a local CSV and count flagged pairs.
+    """
+
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    flagged_pair_count = 0
+
+    # Exclusive creation protects earlier audit results.
+    with path.open("x", newline="", encoding="utf-8") as output_file:
+
+        writer = csv.writer(output_file)
+        writer.writerow(
+            [
+                "user1",
+                "user2",
+                "repeated_group_count",
+                "audit_base1",
+                "audit_base2",
+                "possible_suffix_artifact"
+            ]
+        )
+
+        for user1, user2, repetition_count in edges:
+
+            base1 = get_audit_base(user1)
+            base2 = get_audit_base(user2)
+
+            if user1 == user2:
+                raise ValueError("A graph edge must contain different users.")
+
+            if (
+                isinstance(repetition_count, bool)
+                or not isinstance(repetition_count, int)
+                or repetition_count < 1
+            ):
+                raise ValueError("Repeated group count must be a positive integer.")
+
+            possible_artifact = base1 == base2
+
+            if possible_artifact:
+                flagged_pair_count += 1
+
+            writer.writerow(
+                [
+                    user1,
+                    user2,
+                    repetition_count,
+                    base1,
+                    base2,
+                    possible_artifact
+                ]
+            )
+
+    return flagged_pair_count
 
 
 # ============================================================
@@ -330,7 +532,7 @@ def parse_metadata(row):
 # Enrichment
 # ============================================================
 
-def make_enriched(review, metadata):
+def make_enriched(review: Row, metadata: Row) -> Row:
     """
     Combine review information with product metadata.
     """
@@ -350,6 +552,15 @@ def make_enriched(review, metadata):
             metadata.catalog_average_rating
             if metadata
             else None
+        ),
+        year=get_review_year(review.timestamp),
+        rating_deviation=get_rating_deviation(
+            review.rating,
+            metadata.catalog_average_rating if metadata else None
+        ),
+        text_eligible=is_text_eligible(
+            review.review_text,
+            MIN_TEXT_LENGTH
         )
     )
 
@@ -444,7 +655,8 @@ def write_parquet(df, output_path):
 
     (
         df.write
-        .mode("overwrite")
+        .mode("errorifexists")
+        .partitionBy("category", "year")
         .parquet(output_path)
     )
 
@@ -538,11 +750,6 @@ def main():
         reviews_df.rdd
         .map(parse_review)
         .filter(lambda x: x is not None)
-        .filter(
-            lambda x:
-                x.review_text is not None
-                and len(x.review_text) >= MIN_TEXT_LENGTH
-        )
     )
 
     print(
@@ -837,6 +1044,23 @@ def main():
             edge_count
         )
     )
+
+    # --------------------------------------------------------
+    # Audit repeated pairs for possible reviewer-ID artifacts.
+    # Keep the original IDs and graph edges unchanged.
+    # --------------------------------------------------------
+
+    flagged_pair_count = write_pair_audit(
+        graph_edges.toLocalIterator(),
+        PAIR_AUDIT_PATH
+    )
+
+    print(
+        "Pairs with possible ID suffix artifacts: {}".format(
+            flagged_pair_count
+        )
+    )
+    print("Pair audit: {}".format(PAIR_AUDIT_PATH))
 
     # ========================================================
     # 15. Connected Components
@@ -1190,8 +1414,33 @@ def main():
         "Step 16: Saving enriched reviews..."
     )
 
+    # Explicit types also support empty data and all-null ratings.
+    enriched_schema = StructType(
+        [
+            StructField("user_id", StringType(), False),
+            StructField("product_id", StringType(), False),
+            StructField("rating", DoubleType(), True),
+            StructField("timestamp", LongType(), False),
+            StructField("review_text", StringType(), False),
+            StructField("verified_purchase", BooleanType(), False),
+            StructField("helpful_votes", LongType(), False),
+            StructField("category", StringType(), False),
+            StructField("product_title", StringType(), False),
+            StructField("catalog_average_rating", DoubleType(), True),
+            StructField("year", IntegerType(), False),
+            StructField("rating_deviation", DoubleType(), True),
+            StructField("text_eligible", BooleanType(), False)
+        ]
+    )
+
+    # Match values to schema names explicitly, regardless of Row order.
+    enriched_columns = enriched_schema.fieldNames()
+
     enriched_df = sql_context.createDataFrame(
-        enriched_rdd
+        enriched_rdd.map(
+            lambda review: tuple(review[name] for name in enriched_columns)
+        ),
+        enriched_schema
     )
 
     write_parquet(
