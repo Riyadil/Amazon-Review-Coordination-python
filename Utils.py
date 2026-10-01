@@ -1,636 +1,574 @@
 # ============================================================
 # Utils.py
 # ============================================================
-# Helper functions for Amazon Review Coordination Analysis
+#
+# Reusable parsing, enrichment, graph, scoring, text-analysis,
+# audit, and output helper functions.
+#
 # ============================================================
 
-import csv
-import math
+import itertools
 import re
-
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Iterable, Optional, Tuple
 
 from pyspark.sql import Row
 
 
 # ============================================================
-# Review Year
+# Generic Conversion Helpers
 # ============================================================
 
-def get_review_year(timestamp: int) -> int:
-    """
-    Extract the UTC year from a timestamp already in seconds.
-    """
-
-    if isinstance(timestamp, bool) or not isinstance(timestamp, int):
-        raise ValueError(
-            "Timestamp must be an integer in seconds."
-        )
-
-    return datetime.fromtimestamp(
-        timestamp,
-        timezone.utc
-    ).year
-
-
-# ============================================================
-# Rating Deviation
-# ============================================================
-
-def get_rating_deviation(
-    rating: Optional[float],
-    catalog_average_rating: Optional[float]
-) -> Optional[float]:
-    """
-    Return absolute rating deviation.
-
-    Returns None if either rating is missing.
-    """
-
-    for value in (
-        rating,
-        catalog_average_rating
-    ):
-
-        if value is not None and (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not math.isfinite(value)
-            or not 1.0 <= value <= 5.0
-        ):
-            raise ValueError(
-                "Ratings must be finite numbers from 1 to 5."
-            )
-
-    if (
-        rating is None
-        or catalog_average_rating is None
-    ):
-        return None
-
-    return abs(
-        float(rating)
-        -
-        float(catalog_average_rating)
-    )
-
-
-# ============================================================
-# Text Eligibility
-# ============================================================
-
-def is_text_eligible(
-    text: str,
-    minimum_length: int
-) -> bool:
-    """
-    Check whether cleaned review text is long enough
-    for text similarity analysis.
-    """
-
-    if not isinstance(text, str):
-        raise ValueError(
-            "Review text must be a cleaned string."
-        )
-
-    if (
-        isinstance(minimum_length, bool)
-        or not isinstance(minimum_length, int)
-        or minimum_length < 1
-    ):
-        raise ValueError(
-            "Minimum text length must be a positive integer."
-        )
-
-    return len(text) >= minimum_length
-
-
-# ============================================================
-# Reviewer ID Audit
-# ============================================================
-
-def get_audit_base(user_id: str) -> str:
-    """
-    Remove trailing numeric suffixes only for audit comparison.
-    """
-
-    if (
-        not isinstance(user_id, str)
-        or not user_id.strip()
-    ):
-        raise ValueError(
-            "Reviewer ID must be a non-empty string."
-        )
-
-    base_id = re.sub(
-        r"(?:_[0-9]+)+$",
-        "",
-        user_id
-    )
-
-    if not base_id.strip():
-        raise ValueError(
-            "Reviewer ID has no base before its suffix."
-        )
-
-    return base_id
-
-
-# ============================================================
-# Save Pair Audit
-# ============================================================
-
-def write_pair_audit(
-    edges: Iterable[Tuple[str, str, int]],
-    output_path: str
-) -> int:
-    """
-    Write repeated graph edges to CSV.
-
-    Returns the number of pairs that may contain
-    reviewer-ID suffix artifacts.
-    """
-
-    path = Path(output_path)
-
-    path.parent.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    flagged_pair_count = 0
-
-    with path.open(
-        "x",
-        newline="",
-        encoding="utf-8"
-    ) as output_file:
-
-        writer = csv.writer(output_file)
-
-        writer.writerow(
-            [
-                "user1",
-                "user2",
-                "repeated_group_count",
-                "audit_base1",
-                "audit_base2",
-                "possible_suffix_artifact"
-            ]
-        )
-
-        for (
-            user1,
-            user2,
-            repetition_count
-        ) in edges:
-
-            base1 = get_audit_base(user1)
-            base2 = get_audit_base(user2)
-
-            if user1 == user2:
-                raise ValueError(
-                    "A graph edge must contain different users."
-                )
-
-            if (
-                isinstance(repetition_count, bool)
-                or not isinstance(repetition_count, int)
-                or repetition_count < 1
-            ):
-                raise ValueError(
-                    "Repeated group count must be positive."
-                )
-
-            possible_artifact = (
-                base1 == base2
-            )
-
-            if possible_artifact:
-                flagged_pair_count += 1
-
-            writer.writerow(
-                [
-                    user1,
-                    user2,
-                    repetition_count,
-                    base1,
-                    base2,
-                    possible_artifact
-                ]
-            )
-
-    return flagged_pair_count
-
-
-# ============================================================
-# Generic Row Access
-# ============================================================
-
-def get_value(row, *keys):
-    """
-    Return the first non-null value found.
-    """
-
-    for key in keys:
-
-        try:
-
-            value = row[key]
-
-            if value is not None:
-                return value
-
-        except Exception:
-            pass
-
-    return None
-
-
-# ============================================================
-# Safe Float
-# ============================================================
-
-def get_float(row, *keys):
+def safe_float(value, default=None):
     """
     Safely convert a value to float.
     """
 
-    value = get_value(
-        row,
-        *keys
-    )
-
     if value is None:
-        return None
+        return default
 
     try:
         return float(value)
+    except (TypeError, ValueError):
+        return default
 
-    except Exception:
-        return None
 
-
-# ============================================================
-# Safe Integer
-# ============================================================
-
-def get_int(row, *keys):
+def safe_int(value, default=None):
     """
-    Safely convert a value to integer.
+    Safely convert a value to int.
     """
-
-    value = get_value(
-        row,
-        *keys
-    )
 
     if value is None:
-        return 0
+        return default
 
     try:
-
         return int(value)
-
-    except Exception:
-
-        try:
-            return int(float(value))
-
-        except Exception:
-            return 0
+    except (TypeError, ValueError):
+        return default
 
 
-# ============================================================
-# Safe Long
-# ============================================================
-
-def get_long(row, *keys):
+def safe_bool(value, default=False):
     """
-    Safely convert a timestamp to integer.
+    Convert common representations of boolean values.
     """
-
-    value = get_value(
-        row,
-        *keys
-    )
 
     if value is None:
-        return None
-
-    try:
-
-        return int(value)
-
-    except Exception:
-
-        try:
-            return int(float(value))
-
-        except Exception:
-            return None
-
-
-# ============================================================
-# Safe Boolean
-# ============================================================
-
-def get_boolean(row, *keys):
-    """
-    Safely convert a value to boolean.
-    """
-
-    value = get_value(
-        row,
-        *keys
-    )
-
-    if value is None:
-        return False
+        return default
 
     if isinstance(value, bool):
         return value
 
-    if isinstance(value, str):
-
-        value = value.strip().lower()
-
-        if value in (
-            "true",
-            "1",
-            "yes"
-        ):
-            return True
-
-        if value in (
-            "false",
-            "0",
-            "no"
-        ):
-            return False
-
-    try:
+    if isinstance(value, (int, float)):
         return bool(value)
 
-    except Exception:
+    value = str(value).strip().lower()
+
+    if value in (
+        "true",
+        "1",
+        "yes",
+        "y"
+    ):
+        return True
+
+    if value in (
+        "false",
+        "0",
+        "no",
+        "n"
+    ):
         return False
 
-
-# ============================================================
-# Clean Text
-# ============================================================
-
-def clean_text(text):
-    """
-    Clean review text.
-    """
-
-    if text is None:
-        return ""
-
-    text = str(text)
-
-    # Remove HTML tags
-    text = re.sub(
-        r"<[^>]+>",
-        " ",
-        text
-    )
-
-    # Normalize whitespace
-    text = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
-
-    return text.strip()
-
-
-# ============================================================
-# Time Bucket
-# ============================================================
-
-def get_time_bucket(
-    timestamp,
-    bucket_hours
-):
-    """
-    Convert timestamp to a time bucket.
-
-    Timestamp is expected to be in seconds.
-    """
-
-    if timestamp is None:
-        return None
-
-    bucket_seconds = (
-        bucket_hours
-        * 60
-        * 60
-    )
-
-    return (
-        timestamp // bucket_seconds
-    ) * bucket_seconds
+    return default
 
 
 # ============================================================
 # Review Parsing
 # ============================================================
 
-def parse_review(row):
+def parse_review(record):
     """
-    Parse one raw review record.
+    Parse one raw Amazon review record.
+
+    This function intentionally supports several common field
+    names used by Amazon review datasets.
     """
 
-    user_id = get_value(
-        row,
-        "user_id",
-        "user"
-    )
+    try:
 
-    product_id = get_value(
-        row,
-        "parent_asin",
-        "asin",
-        "product_id"
-    )
+        user_id = (
+            record.get("user_id")
+            or record.get("reviewerID")
+        )
 
-    review_text = get_value(
-        row,
-        "text",
-        "reviewText"
-    )
+        product_id = (
+            record.get("product_id")
+            or record.get("asin")
+        )
 
-    rating = get_float(
-        row,
-        "rating",
-        "overall"
-    )
+        rating = (
+            record.get("rating")
+            if record.get("rating") is not None
+            else record.get("overall")
+        )
 
-    timestamp = get_long(
-        row,
-        "timestamp",
-        "unixReviewTime",
-        "reviewTime"
-    )
+        timestamp = (
+            record.get("timestamp")
+        )
 
-    verified_purchase = get_boolean(
-        row,
-        "verified_purchase",
-        "verifiedPurchase"
-    )
+        if timestamp is None:
 
-    helpful_votes = get_int(
-        row,
-        "helpful_votes",
-        "helpfulVote",
-        "helpful"
-    )
+            timestamp = (
+                record.get("unixReviewTime")
+            )
 
-    # Convert milliseconds to seconds.
-    if (
-        timestamp is not None
-        and timestamp > 100000000000
-    ):
-        timestamp = timestamp // 1000
+        review_text = (
+            record.get("review_text")
+        )
 
-    review_text = clean_text(
-        review_text
-    )
+        if review_text is None:
 
-    if user_id is None:
+            review_text = (
+                record.get("reviewText")
+            )
+
+        verified_purchase = (
+            record.get("verified_purchase")
+        )
+
+        if verified_purchase is None:
+
+            verified_purchase = (
+                record.get("verified")
+            )
+
+        helpful_votes = (
+            record.get("helpful_votes")
+        )
+
+        if helpful_votes is None:
+
+            helpful_votes = (
+                record.get("helpful")
+            )
+
+        # Amazon datasets sometimes represent helpful votes
+        # as [helpful_votes, total_votes].
+        if isinstance(helpful_votes, list):
+
+            if helpful_votes:
+
+                helpful_votes = (
+                    safe_int(
+                        helpful_votes[0],
+                        0
+                    )
+                )
+
+            else:
+
+                helpful_votes = 0
+
+        user_id = (
+            str(user_id).strip()
+            if user_id is not None
+            else None
+        )
+
+        product_id = (
+            str(product_id).strip()
+            if product_id is not None
+            else None
+        )
+
+        review_text = (
+            str(review_text).strip()
+            if review_text is not None
+            else ""
+        )
+
+        timestamp = safe_int(
+            timestamp
+        )
+
+        rating = safe_float(
+            rating
+        )
+
+        verified_purchase = safe_bool(
+            verified_purchase
+        )
+
+        helpful_votes = safe_int(
+            helpful_votes,
+            0
+        )
+
+        if not user_id:
+            return None
+
+        if not product_id:
+            return None
+
+        if timestamp is None:
+            return None
+
+        return Row(
+            user_id=user_id,
+            product_id=product_id,
+            rating=rating,
+            timestamp=timestamp,
+            review_text=review_text,
+            verified_purchase=verified_purchase,
+            helpful_votes=helpful_votes
+        )
+
+    except Exception:
+
         return None
-
-    if product_id is None:
-        return None
-
-    if timestamp is None:
-        return None
-
-    return Row(
-        user_id=str(user_id),
-        product_id=str(product_id),
-        rating=rating,
-        timestamp=timestamp,
-        review_text=review_text,
-        verified_purchase=verified_purchase,
-        helpful_votes=helpful_votes
-    )
 
 
 # ============================================================
 # Metadata Parsing
 # ============================================================
 
-def parse_metadata(row):
+def parse_metadata(record):
     """
     Parse one product metadata record.
     """
 
-    product_id = get_value(
-        row,
-        "parent_asin",
-        "asin",
-        "product_id"
-    )
+    try:
 
-    category = get_value(
-        row,
-        "main_category",
-        "category"
-    )
+        product_id = (
+            record.get("product_id")
+            or record.get("asin")
+        )
 
-    title = get_value(
-        row,
-        "title",
-        "product_title"
-    )
+        if product_id is None:
+            return None
 
-    average_rating = get_float(
-        row,
-        "average_rating"
-    )
+        product_id = str(
+            product_id
+        ).strip()
 
-    if product_id is None:
+        if not product_id:
+            return None
+
+        category = (
+            record.get("category")
+        )
+
+        if category is None:
+
+            categories = (
+                record.get("categories")
+            )
+
+            if isinstance(categories, list):
+
+                if categories:
+
+                    # Flatten nested category lists.
+                    flattened = []
+
+                    for item in categories:
+
+                        if isinstance(item, list):
+
+                            flattened.extend(
+                                str(x)
+                                for x in item
+                                if x is not None
+                            )
+
+                        elif item is not None:
+
+                            flattened.append(
+                                str(item)
+                            )
+
+                    category = (
+                        flattened[-1]
+                        if flattened
+                        else "Unknown"
+                    )
+
+                else:
+
+                    category = "Unknown"
+
+            else:
+
+                category = "Unknown"
+
+        if isinstance(category, list):
+
+            category = (
+                category[-1]
+                if category
+                else "Unknown"
+            )
+
+        category = str(
+            category
+        ).strip()
+
+        if not category:
+            category = "Unknown"
+
+        product_title = (
+            record.get("product_title")
+        )
+
+        if product_title is None:
+
+            product_title = (
+                record.get("title")
+            )
+
+        if product_title is None:
+
+            product_title = ""
+
+        product_title = str(
+            product_title
+        ).strip()
+
+        catalog_average_rating = (
+            record.get("catalog_average_rating")
+        )
+
+        if catalog_average_rating is None:
+
+            catalog_average_rating = (
+                record.get("average_rating")
+            )
+
+        if catalog_average_rating is None:
+
+            catalog_average_rating = (
+                record.get("avg_rating")
+            )
+
+        catalog_average_rating = safe_float(
+            catalog_average_rating
+        )
+
+        return Row(
+            product_id=product_id,
+            category=category,
+            product_title=product_title,
+            catalog_average_rating=catalog_average_rating
+        )
+
+    except Exception:
+
         return None
-
-    return Row(
-        product_id=str(product_id),
-        category=(
-            str(category)
-            if category is not None
-            else ""
-        ),
-        product_title=(
-            str(title)
-            if title is not None
-            else ""
-        ),
-        catalog_average_rating=average_rating
-    )
 
 
 # ============================================================
 # Enrichment
 # ============================================================
 
-def make_enriched(
-    review: Row,
-    metadata: Row
-) -> Row:
+def make_enriched(review, metadata):
     """
-    Combine review information with product metadata.
+    Combine review and product metadata.
     """
 
-    return Row(
-        user_id=review.user_id,
-        product_id=review.product_id,
-        rating=review.rating,
-        timestamp=review.timestamp,
-        review_text=review.review_text,
-        verified_purchase=review.verified_purchase,
-        helpful_votes=review.helpful_votes,
+    try:
 
-        category=(
-            metadata.category
-            if metadata
-            else ""
-        ),
+        rating_deviation = None
 
-        product_title=(
-            metadata.product_title
-            if metadata
-            else ""
-        ),
+        if (
+            review.rating is not None
+            and
+            metadata.catalog_average_rating is not None
+        ):
 
-        catalog_average_rating=(
-            metadata.catalog_average_rating
-            if metadata
-            else None
-        ),
-
-        year=get_review_year(
-            review.timestamp
-        ),
-
-        rating_deviation=get_rating_deviation(
-            review.rating,
-            (
+            rating_deviation = abs(
+                review.rating -
                 metadata.catalog_average_rating
-                if metadata
-                else None
             )
-        ),
 
-        text_eligible=is_text_eligible(
-            review.review_text,
-            30
+        year = get_year_from_timestamp(
+            review.timestamp
         )
+
+        text_eligible = (
+            len(
+                review.review_text.strip()
+            )
+            >= 30
+        )
+
+        return Row(
+            user_id=str(review.user_id),
+            product_id=str(review.product_id),
+            rating=review.rating,
+            timestamp=int(review.timestamp),
+            review_text=str(review.review_text),
+            verified_purchase=bool(
+                review.verified_purchase
+            ),
+            helpful_votes=int(
+                review.helpful_votes
+            ),
+            category=str(
+                metadata.category
+            ),
+            product_title=str(
+                metadata.product_title
+            ),
+            catalog_average_rating=(
+                metadata.catalog_average_rating
+            ),
+            year=int(year),
+            rating_deviation=rating_deviation,
+            text_eligible=bool(
+                text_eligible
+            )
+        )
+
+    except Exception:
+
+        return None
+
+
+# ============================================================
+# Time Functions
+# ============================================================
+
+def get_time_bucket(timestamp, bucket_hours):
+    """
+    Convert a Unix timestamp into a fixed-size time bucket.
+
+    The returned value is the beginning of the bucket in
+    Unix seconds.
+    """
+
+    bucket_seconds = (
+        int(bucket_hours) * 60 * 60
     )
+
+    if bucket_seconds <= 0:
+        raise ValueError(
+            "bucket_hours must be greater than zero"
+        )
+
+    timestamp = int(timestamp)
+
+    return (
+        timestamp // bucket_seconds
+    ) * bucket_seconds
+
+
+def get_year_from_timestamp(timestamp):
+    """
+    Convert Unix seconds to UTC calendar year.
+
+    Uses UTC so results are deterministic across Spark workers.
+    """
+
+    import datetime
+
+    return datetime.datetime.utcfromtimestamp(
+        int(timestamp)
+    ).year
+
+
+# ============================================================
+# Pair Audit
+# ============================================================
+
+def looks_like_id_suffix_artifact(user_id):
+    """
+    Heuristic for IDs that may contain an accidental numeric
+    suffix.
+
+    This is an audit signal only. It does not modify IDs.
+    """
+
+    if user_id is None:
+        return False
+
+    value = str(user_id).strip()
+
+    patterns = [
+        r"_[0-9]+$",
+        r"-[0-9]+$",
+        r"\([0-9]+\)$"
+    ]
+
+    return any(
+        re.search(
+            pattern,
+            value
+        )
+        for pattern in patterns
+    )
+
+
+def write_pair_audit(
+    pair_iterator,
+    output_path
+):
+    """
+    Write a simple text audit of graph edges whose user IDs
+    may contain suffix artifacts.
+
+    Returns the number of flagged pairs.
+    """
+
+    flagged = []
+
+    for edge in pair_iterator:
+
+        if len(edge) < 2:
+            continue
+
+        user1 = edge[0]
+        user2 = edge[1]
+
+        if (
+            looks_like_id_suffix_artifact(user1)
+            or
+            looks_like_id_suffix_artifact(user2)
+        ):
+
+            flagged.append(
+                (
+                    str(user1),
+                    str(user2),
+                    int(edge[2])
+                    if len(edge) > 2
+                    else 0
+                )
+            )
+
+    # This helper intentionally uses normal Python file I/O
+    # because the original pipeline expects a single audit file.
+    #
+    # For HDFS/S3-only deployments, replace this with an
+    # appropriate distributed writer.
+    with open(
+        output_path,
+        "w",
+        encoding="utf-8"
+    ) as output_file:
+
+        output_file.write(
+            "user1,user2,repeated_groups\n"
+        )
+
+        for user1, user2, repetitions in flagged:
+
+            output_file.write(
+                "{},{},{}\n".format(
+                    user1,
+                    user2,
+                    repetitions
+                )
+            )
+
+    return len(flagged)
 
 
 # ============================================================
@@ -643,242 +581,428 @@ def connected_components(
     iterations
 ):
     """
-    Find connected components using iterative
-    minimum-label propagation.
+    Find connected components using iterative minimum-label
+    propagation.
+
+    Parameters
+    ----------
+    vertices:
+        RDD containing user IDs.
+
+    edges:
+        RDD containing (user1, user2).
+
+    iterations:
+        Maximum number of propagation rounds.
+
+    Returns
+    -------
+    RDD:
+        (user_id, component_id)
+
+    Notes
+    -----
+    Every vertex initially labels itself.
+
+    During every iteration, each vertex exchanges its smallest
+    known label with its neighbors.
+
+    Because edges are made undirected here, labels propagate
+    through the complete connected component.
     """
 
-    labels = vertices.map(
-        lambda v: (v, v)
+    labels = (
+        vertices
+        .map(
+            lambda user_id: (
+                user_id,
+                user_id
+            )
+        )
     )
 
-    directed_edges = edges.flatMap(
-        lambda edge: [
-            (edge[0], edge[1]),
-            (edge[1], edge[0])
-        ]
+    # Make graph explicitly undirected.
+    undirected_edges = (
+        edges
+        .flatMap(
+            lambda edge: [
+                (
+                    edge[0],
+                    edge[1]
+                ),
+                (
+                    edge[1],
+                    edge[0]
+                )
+            ]
+        )
+        .distinct()
+        .cache()
     )
 
-    for iteration in range(iterations):
+    # Build adjacency lists.
+    adjacency = (
+        undirected_edges
+        .groupByKey()
+        .mapValues(
+            lambda neighbors:
+                list(set(neighbors))
+        )
+    )
 
-        joined = directed_edges.join(
+    # Keep isolated vertices.
+    adjacency = (
+        vertices
+        .map(
+            lambda user_id: (
+                user_id,
+                []
+            )
+        )
+        .leftOuterJoin(adjacency)
+        .mapValues(
+            lambda value:
+                value[1]
+                if value[1] is not None
+                else []
+        )
+    )
+
+    for _ in range(
+        max(1, int(iterations))
+    ):
+
+        propagated = (
             labels
-        )
-
-        proposals = joined.map(
-            lambda x: (
-                x[1][0],
-                x[1][1]
+            .join(adjacency)
+            .flatMap(
+                lambda item:
+                    [
+                        (
+                            item[0],
+                            item[1][0]
+                        )
+                    ]
+                    +
+                    [
+                        (
+                            neighbor,
+                            item[1][0]
+                        )
+                        for neighbor
+                        in item[1][1]
+                    ]
+            )
+            .reduceByKey(
+                min
             )
         )
 
-        own_labels = labels.map(
-            lambda x: (
-                x[0],
-                x[1]
-            )
-        )
+        new_labels = propagated
 
-        proposed_labels = (
-            proposals
-            .union(own_labels)
-            .reduceByKey(min)
-        )
-
-        labels = proposed_labels
-
-        print(
-            "Connected components "
-            "iteration {}/{}".format(
-                iteration + 1,
-                iterations
-            )
-        )
+        # Materialize before comparing if desired by caller.
+        labels = new_labels
 
     return labels
 
 
 # ============================================================
-# Component Score
+# Component / Review Statistics
 # ============================================================
 
-def calculate_coordination_score(
-    component_id,
-    statistics,
-    user_count,
-    size_weight,
-    density_weight,
-    repetition_weight,
-    size_normalization,
-    repetition_normalization
+def calculate_time_concentration(
+    timestamps
 ):
     """
-    Calculate coordination score for one component.
+    Measure concentration of reviews in the busiest hourly
+    bucket.
+
+    Returns a value in [0, 1].
     """
 
-    edge_count = statistics[0]
+    timestamps = list(
+        timestamps
+    )
 
-    total_repeated_groups = statistics[1]
+    if not timestamps:
+        return 0.0
 
-    if user_count <= 1:
+    from collections import Counter
 
-        possible_edges = 1.0
+    hour_buckets = Counter()
 
-    else:
+    for timestamp in timestamps:
 
-        possible_edges = (
-            user_count
-            * (user_count - 1)
-            / 2.0
+        bucket = (
+            int(timestamp) // 3600
         )
 
-    density = (
-        edge_count
-        / possible_edges
+        hour_buckets[bucket] += 1
+
+    busiest = max(
+        hour_buckets.values()
     )
 
-    if edge_count > 0:
-
-        average_repetition = (
-            total_repeated_groups
-            / float(edge_count)
-        )
-
-    else:
-
-        average_repetition = 0.0
-
-    size_signal = min(
-        user_count
-        / size_normalization,
-        1.0
-    )
-
-    repetition_signal = min(
-        average_repetition
-        / repetition_normalization,
-        1.0
-    )
-
-    coordination_score = (
-        size_weight * size_signal
-        +
-        density_weight * density
-        +
-        repetition_weight * repetition_signal
-    )
-
-    return Row(
-        component_id=str(component_id),
-        user_count=int(user_count),
-        edge_count=int(edge_count),
-        total_repeated_groups=int(
-            total_repeated_groups
-        ),
-        density=float(density),
-        average_repetition=float(
-            average_repetition
-        ),
-        size_signal=float(size_signal),
-        repetition_signal=float(
-            repetition_signal
-        ),
-        coordination_score=float(
-            coordination_score
-        )
+    return (
+        busiest /
+        float(len(timestamps))
     )
 
 
-# ============================================================
-# Print Component
-# ============================================================
-
-def print_component(
-    component,
-    index
+def calculate_rating_agreement(
+    ratings
 ):
     """
-    Print one coordination group.
+    Measure how concentrated ratings are around their mean.
+
+    Returns a value approximately in [0, 1].
+
+    A value near 1 means ratings are highly similar.
     """
 
-    print()
-    print(
-        "Group #{}".format(index)
+    ratings = [
+        float(x)
+        for x in ratings
+        if x is not None
+    ]
+
+    if len(ratings) <= 1:
+        return 1.0
+
+    mean_rating = (
+        sum(ratings) /
+        float(len(ratings))
     )
 
-    print(
-        "Component ID: {}"
-        .format(component.component_id)
+    mean_abs_deviation = (
+        sum(
+            abs(
+                rating -
+                mean_rating
+            )
+            for rating in ratings
+        )
+        /
+        float(len(ratings))
     )
 
-    print(
-        "Users: {}"
-        .format(component.user_count)
+    # Amazon ratings are normally on a 1-5 scale.
+    normalized = (
+        mean_abs_deviation /
+        4.0
     )
 
-    print(
-        "Edges: {}"
-        .format(component.edge_count)
-    )
-
-    print(
-        "Repeated Groups: {}"
-        .format(
-            component.total_repeated_groups
+    return max(
+        0.0,
+        min(
+            1.0,
+            1.0 - normalized
         )
     )
 
-    print(
-        "Density: {:.4f}"
-        .format(component.density)
+
+def calculate_verified_purchase_rate(
+    verified
+):
+    """
+    Percentage of reviews marked as verified purchases.
+    """
+
+    verified = list(
+        verified
     )
 
-    print(
-        "Average Repetition: {:.4f}"
-        .format(
-            component.average_repetition
+    if not verified:
+        return 0.0
+
+    return (
+        sum(
+            1
+            for value in verified
+            if bool(value)
         )
+        /
+        float(len(verified))
     )
 
-    print(
-        "Size Signal: {:.4f}"
-        .format(component.size_signal)
+
+def calculate_helpful_vote_average(
+    helpful
+):
+    """
+    Average number of helpful votes.
+    """
+
+    helpful = [
+        float(x)
+        for x in helpful
+        if x is not None
+    ]
+
+    if not helpful:
+        return 0.0
+
+    return (
+        sum(helpful) /
+        float(len(helpful))
     )
 
-    print(
-        "Repetition Signal: {:.4f}"
-        .format(
-            component.repetition_signal
-        )
-    )
 
-    print(
-        "Coordination Score: {:.4f}"
-        .format(
-            component.coordination_score
-        )
+def calculate_average_similarity(
+    values
+):
+    """
+    Calculate average text similarity.
+    """
+
+    values = [
+        float(value)
+        for value in values
+        if value is not None
+    ]
+
+    if not values:
+        return 0.0
+
+    return (
+        sum(values) /
+        float(len(values))
     )
 
 
 # ============================================================
-# Save DataFrame as Parquet
+# Combined Coordination Score
+# ============================================================
+
+def calculate_combined_coordination_score(
+    size_signal,
+    density,
+    repetition_signal,
+    time_concentration,
+    rating_agreement,
+    average_text_similarity
+):
+    """
+    Combine structural, temporal, rating, and textual signals.
+
+    The weights are explicit so the scoring model is
+    reproducible.
+    """
+
+    values = [
+        size_signal,
+        density,
+        repetition_signal,
+        time_concentration,
+        rating_agreement,
+        average_text_similarity
+    ]
+
+    cleaned = []
+
+    for value in values:
+
+        try:
+
+            value = float(value)
+
+            if value != value:
+                value = 0.0
+
+        except (TypeError, ValueError):
+
+            value = 0.0
+
+        cleaned.append(
+            max(
+                0.0,
+                min(
+                    1.0,
+                    value
+                )
+            )
+        )
+
+    (
+        size_signal,
+        density,
+        repetition_signal,
+        time_concentration,
+        rating_agreement,
+        average_text_similarity
+    ) = cleaned
+
+    return (
+        0.20 * size_signal
+        +
+        0.20 * density
+        +
+        0.20 * repetition_signal
+        +
+        0.15 * time_concentration
+        +
+        0.10 * rating_agreement
+        +
+        0.15 * average_text_similarity
+    )
+
+
+# ============================================================
+# Text Tokenization
+# ============================================================
+
+def tokenize_review_text(
+    text
+):
+    """
+    Basic deterministic tokenizer for review similarity.
+
+    Steps:
+      - lowercase
+      - retain alphabetic/numeric tokens
+      - discard very short tokens
+    """
+
+    if text is None:
+        return []
+
+    text = str(
+        text
+    ).lower()
+
+    tokens = re.findall(
+        r"[a-z0-9]+",
+        text
+    )
+
+    tokens = [
+        token
+        for token in tokens
+        if len(token) >= 2
+    ]
+
+    # HashingTF works better with a set of terms for this
+    # particular Jaccard-style similarity analysis.
+    return sorted(
+        set(tokens)
+    )
+
+
+# ============================================================
+# Parquet Output
 # ============================================================
 
 def write_parquet(
-    df,
+    dataframe,
     output_path
 ):
     """
-    Save DataFrame as partitioned Parquet.
+    Write enriched review data partitioned by category and year.
     """
 
-    print(
-        "Writing Parquet output:"
-    )
-
-    print(output_path)
-
     (
-        df.write
+        dataframe
+        .write
         .mode("errorifexists")
         .partitionBy(
             "category",
@@ -887,8 +1011,4 @@ def write_parquet(
         .parquet(
             output_path
         )
-    )
-
-    print(
-        "Parquet output successfully written."
     )
