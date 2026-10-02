@@ -1,17 +1,30 @@
 # ============================================================
-# AmazonReviewCoordination.py
+# AmazonReviewPipeline.py
 # ============================================================
 #
-# SINGLE-FILE VERSION
 #
-# This file combines:
-#   - Config.py
-#   - Utils.py
-#   - AmazonReviewPipeline.py
+# Group Members:
+#   1. Asif Faisal Chowdhury
+#   2. Souhardya Saha Dip
+#   3. Riyadil Zannat
 #
-# The original functionality and code are preserved. The
-# separate Config/Utils imports have been removed because their
-# definitions are included directly in this file.
+# This program:
+#   1. Loads Amazon reviews and metadata
+#   2. Cleans and enriches review data
+#   3. Groups reviews into time buckets
+#   4. Identifies repeated user pairs
+#   5. Builds a user coordination graph
+#   6. Finds connected components using label propagation
+#   7. Calculates coordination scores
+#   8. Saves enriched data as Parquet by category and year
+#   9. Attaches component IDs to reviews
+#  10. Calculates detailed component statistics
+#  11. Runs distributed MinHash text similarity analysis
+#  12. Aggregates text similarity by component
+#  13. Calculates extended coordination scores
+#  14. Ranks final coordination groups
+#  15. Saves component and suspicious-review results
+#  16. Generates a runtime/performance summary
 #
 # ============================================================
 
