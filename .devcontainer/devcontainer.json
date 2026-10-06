@@ -1,7 +1,7 @@
 {
   "name": "Amazon Review Coordination - PySpark",
   "build": {
-    "dockerfile": "../Dockerfile",
+    "dockerfile": "Dockerfile",
     "context": ".."
   },
   "remoteUser": "vscode",
@@ -23,9 +23,5 @@
       }
     }
   },
-  "postCreateCommand": "python -c \"import pyspark; print('PySpark', pyspark.__version__)\" && java -version 2>&1 | head -n 1",
-  "forwardPorts": [],
-  "remoteEnv": {
-    "PYTHONPATH": "/workspace"
-  }
+  "postCreateCommand": "python -c \"import pyspark; print('PySpark', pyspark.__version__)\" && java -version 2>&1 | head -n 1"
 }
