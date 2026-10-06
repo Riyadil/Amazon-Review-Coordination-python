@@ -299,6 +299,40 @@ FINAL_GROUP_OUTPUT_PATH = (
     "output/final_coordination_groups"
 )
 
+# Names used by the main pipeline. Keep these aliases in one place so
+# every output written by the pipeline has an explicit configuration.
+COMPONENT_OUTPUT_PATH = GROUP_OUTPUT_PATH
+TEXT_OUTPUT_PATH = TEXT_SIMILARITY_OUTPUT_PATH
+SUSPICIOUS_REVIEW_OUTPUT_PATH = (
+    "output/suspicious_reviews"
+)
+PERFORMANCE_OUTPUT_PATH = BENCHMARK_OUTPUT_PATH
+
+# Spark ML settings. HashingTF creates a binary feature vector for
+# MinHashLSH; 2^18 features is a conservative default for this dataset.
+TEXT_NUM_FEATURES = 1 << 18
+
+# approxSimilarityJoin expects Jaccard DISTANCE. Convert the desired
+# similarity threshold to the corresponding distance threshold.
+TEXT_JOIN_THRESHOLD = 1.0 - TEXT_SIMILARITY_THRESHOLD
+
+# Keep the implementation and configuration synchronized.
+MAX_TEXT_REVIEWS_PER_COMPONENT = MAX_REVIEWS_PER_COMPONENT
+
+# Use overwrite during development so a second validation run does not
+# fail merely because an output directory already exists.
+OUTPUT_WRITE_MODE = "overwrite"
+
+# Configuration sanity checks. Fail early instead of after expensive Spark jobs.
+if not 0.0 <= TEXT_SIMILARITY_THRESHOLD <= 1.0:
+    raise ValueError("TEXT_SIMILARITY_THRESHOLD must be between 0 and 1")
+
+if MINHASH_NUM_HASH_TABLES < 1:
+    raise ValueError("MINHASH_NUM_HASH_TABLES must be at least 1")
+
+if TEXT_NUM_FEATURES < 2:
+    raise ValueError("TEXT_NUM_FEATURES must be at least 2")
+
 
 # ============================================================
 # Output Format Configuration
@@ -464,8 +498,11 @@ def parse_review(record):
             or record.get("reviewerID")
         )
 
+        # Amazon Reviews'23 uses parent_asin as the product key that
+        # matches the product metadata parent_asin field.
         product_id = (
-            record.get("product_id")
+            record.get("parent_asin")
+            or record.get("product_id")
             or record.get("asin")
         )
 
@@ -492,6 +529,12 @@ def parse_review(record):
         if review_text is None:
 
             review_text = (
+                record.get("text")
+            )
+
+        if review_text is None:
+
+            review_text = (
                 record.get("reviewText")
             )
 
@@ -508,6 +551,12 @@ def parse_review(record):
         helpful_votes = (
             record.get("helpful_votes")
         )
+
+        if helpful_votes is None:
+
+            helpful_votes = (
+                record.get("helpful_vote")
+            )
 
         if helpful_votes is None:
 
@@ -554,6 +603,11 @@ def parse_review(record):
             timestamp
         )
 
+        # Amazon Reviews'23 stores timestamp in milliseconds.
+        # Normalize to Unix seconds for bucketing and year extraction.
+        if timestamp is not None and timestamp > 10_000_000_000:
+            timestamp = timestamp // 1000
+
         rating = safe_float(
             rating
         )
@@ -598,12 +652,16 @@ def parse_review(record):
 def parse_metadata(record):
     """
     Parse one product metadata record.
+
+    Amazon Reviews'23 product metadata uses parent_asin as the
+    product identifier corresponding to review parent_asin.
     """
 
     try:
 
         product_id = (
-            record.get("product_id")
+            record.get("parent_asin")
+            or record.get("product_id")
             or record.get("asin")
         )
 
@@ -618,8 +676,14 @@ def parse_metadata(record):
             return None
 
         category = (
-            record.get("category")
+            record.get("main_category")
         )
+
+        if category is None:
+
+            category = (
+                record.get("category")
+            )
 
         if category is None:
 
@@ -1298,17 +1362,17 @@ def calculate_combined_coordination_score(
     ) = cleaned
 
     return (
-        0.20 * size_signal
+        COMBINED_SIZE_WEIGHT * size_signal
         +
-        0.20 * density
+        COMBINED_DENSITY_WEIGHT * density
         +
-        0.20 * repetition_signal
+        COMBINED_REPETITION_WEIGHT * repetition_signal
         +
-        0.15 * time_concentration
+        COMBINED_TIME_WEIGHT * time_concentration
         +
-        0.10 * rating_agreement
+        COMBINED_RATING_WEIGHT * rating_agreement
         +
-        0.15 * average_text_similarity
+        COMBINED_TEXT_WEIGHT * average_text_similarity
     )
 
 
@@ -1343,7 +1407,7 @@ def tokenize_review_text(
     tokens = [
         token
         for token in tokens
-        if len(token) >= 2
+        if len(token) >= MIN_TOKEN_LENGTH
     ]
 
     # HashingTF works better with a set of terms for this
@@ -1368,7 +1432,7 @@ def write_parquet(
     (
         dataframe
         .write
-        .mode("errorifexists")
+        .mode(OUTPUT_WRITE_MODE)
         .partitionBy(
             "category",
             "year"
@@ -1510,21 +1574,21 @@ def calculate_initial_score(record):
         average_repetition = 0.0
 
     size_signal = min(
-        user_count / 20.0,
+        user_count / SIZE_NORMALIZATION,
         1.0
     )
 
     repetition_signal = min(
-        average_repetition / 10.0,
+        average_repetition / REPETITION_NORMALIZATION,
         1.0
     )
 
     coordination_score = (
-        0.35 * size_signal
+        SIZE_WEIGHT * size_signal
         +
-        0.35 * density
+        DENSITY_WEIGHT * density
         +
-        0.30 * repetition_signal
+        REPETITION_WEIGHT * repetition_signal
     )
 
     return Row(
@@ -1691,6 +1755,24 @@ def main():
     print(
         "Driver memory: {}".format(
             DRIVER_MEMORY
+        )
+    )
+
+    print(
+        "Text similarity threshold: {:.2f}".format(
+            TEXT_SIMILARITY_THRESHOLD
+        )
+    )
+
+    print(
+        "MinHash hash tables: {}".format(
+            MINHASH_NUM_HASH_TABLES
+        )
+    )
+
+    print(
+        "MinHash join distance: {:.2f}".format(
+            TEXT_JOIN_THRESHOLD
         )
     )
 
@@ -2721,59 +2803,69 @@ def main():
         .filter(
             col("tokens").isNotNull()
         )
-        .filter(
-            col("tokens").isNotNull()
+    )
+
+
+    # --------------------------------------------------------
+    # HashingTF + MinHash.
+    # --------------------------------------------------------
+
+    text_review_count = text_reviews_df.count()
+
+    if text_review_count == 0:
+
+        print("No eligible text reviews found; skipping MinHash fitting.")
+
+        similarity_pairs = (
+            sql_context
+            .createDataFrame(
+                [],
+                StructType([
+                    StructField("component_id", StringType(), False),
+                    StructField("user1", StringType(), False),
+                    StructField("user2", StringType(), False),
+                    StructField("product1", StringType(), False),
+                    StructField("product2", StringType(), False),
+                    StructField("timestamp1", LongType(), False),
+                    StructField("timestamp2", LongType(), False),
+                    StructField("jaccard_distance", DoubleType(), False),
+                    StructField("text_similarity", DoubleType(), False)
+                ])
+            )
         )
-    )
 
+    else:
 
-    # --------------------------------------------------------
-    # HashingTF.
-    # --------------------------------------------------------
-
-    hashing_tf = HashingTF(
-        inputCol="tokens",
-        outputCol="features",
-        numFeatures=TEXT_NUM_FEATURES
-    )
-
-
-    feature_df = hashing_tf.transform(
-        text_reviews_df
-    )
-
-
-    # --------------------------------------------------------
-    # MinHash.
-    # --------------------------------------------------------
-
-    minhash = MinHashLSH(
-        inputCol="features",
-        outputCol="hashes",
-        numHashTables=3
-    )
-
-
-    minhash_model = minhash.fit(
-        feature_df
-    )
-
-
-    # --------------------------------------------------------
-    # Similarity join.
-    #
-    # The component comparison MUST happen before the nested
-    # dataset columns are flattened by select().
-    # --------------------------------------------------------
-
-    similarity_pairs = (
-        minhash_model
-        .approxSimilarityJoin(
-            feature_df,
-            feature_df,
-            TEXT_JOIN_THRESHOLD,
-            distCol="jaccard_distance"
+        hashing_tf = HashingTF(
+            inputCol="tokens",
+            outputCol="features",
+            numFeatures=TEXT_NUM_FEATURES
         )
+
+        feature_df = hashing_tf.transform(
+            text_reviews_df
+        )
+
+        minhash = MinHashLSH(
+            inputCol="features",
+            outputCol="hashes",
+            numHashTables=MINHASH_NUM_HASH_TABLES
+        )
+
+        minhash_model = minhash.fit(
+            feature_df
+        )
+
+        # approxSimilarityJoin expects Jaccard DISTANCE.
+        # TEXT_JOIN_THRESHOLD = 1 - TEXT_SIMILARITY_THRESHOLD.
+        similarity_pairs = (
+            minhash_model
+            .approxSimilarityJoin(
+                feature_df,
+                feature_df,
+                TEXT_JOIN_THRESHOLD,
+                distCol="jaccard_distance"
+            )
         .filter(
             col("datasetA.user_id")
             !=
@@ -3258,7 +3350,7 @@ def main():
     (
         ranked_components_df
         .write
-        .mode("errorifexists")
+        .mode(OUTPUT_WRITE_MODE)
         .parquet(
             COMPONENT_OUTPUT_PATH
         )
@@ -3282,7 +3374,7 @@ def main():
     (
         similarity_pairs
         .write
-        .mode("errorifexists")
+        .mode(OUTPUT_WRITE_MODE)
         .parquet(
             TEXT_OUTPUT_PATH
         )
@@ -3339,7 +3431,7 @@ def main():
         (
             candidate_reviews_df
             .write
-            .mode("errorifexists")
+            .mode(OUTPUT_WRITE_MODE)
             .partitionBy(
                 "category",
                 "year"
@@ -3448,7 +3540,7 @@ def main():
     (
         performance_df
         .write
-        .mode("errorifexists")
+        .mode(OUTPUT_WRITE_MODE)
         .parquet(
             PERFORMANCE_OUTPUT_PATH
         )
