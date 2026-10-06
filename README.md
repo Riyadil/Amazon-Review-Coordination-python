@@ -8,19 +8,32 @@ Group members: Asif Faisal Chowdhury, Souhardya Saha Dip, Riyadil Zannat.
 
 ## Source of truth
 
-`AmazonReviewCoordination_single.py` is the only implementation. It is
-self-contained: configuration, helpers and the pipeline all live in that file,
-and it imports nothing beyond PySpark and the standard library.
+`AmazonReviewCoordinationDF.py` is the only implementation.
 
-The earlier split version (`AmazonReviewPipeline.py` + `Config.py` + `Utils.py`)
-has been removed. It had drifted out of date and still expected the older
-Amazon field names, so it silently produced no results on Reviews'23.
+It keeps the work inside Spark SQL: parsing and enrichment are column
+expressions, candidate pairs come from a self-join, and connected components
+use GraphFrames. Two earlier versions have been removed:
+
+- the split version (`AmazonReviewPipeline.py` + `Config.py` + `Utils.py`),
+  which still expected the older Amazon field names and silently produced no
+  results on Reviews'23
+- the single-file row-based version, which converted every review into a
+  Python object (`reviews_df.rdd.map(parse_review)`). That conversion ran out
+  of heap on the full 24.4M-review dataset, because the cost is paid in flight
+  in the JVM-to-Python writer, where neither disk spill nor a smaller cache
+  helps.
+
+The current version was validated against the row-based one on the Video Games
+category and reproduces every figure exactly - 4,624,615 enriched reviews,
+3,428,395 candidate groups, 232 repeated pairs, 349 graph vertices and 8
+flagged same-account pairs - in 607s against 1003s.
 
 ## Repository layout
 
 ```text
-AmazonReviewCoordination_single.py   the pipeline (single source of truth)
-run_local.sh                         convenience runner, writes logs/run-<stamp>.log
+AmazonReviewCoordinationDF.py        the pipeline (single source of truth)
+run_local.sh                         one run over everything in data/
+run_all_categories.sh                one run per category, sequentially
 requirements.txt                     pyspark 3.5.7, numpy, setuptools
 data/reviews/                        *.jsonl.gz review files      (git-ignored)
 data/meta/                           *.jsonl.gz metadata files    (git-ignored)
@@ -64,13 +77,23 @@ excluded from Git by `.gitignore`.
 ## Running
 
 ```bash
-./run_local.sh
+./run_local.sh                 # one run over everything in data/
+./run_all_categories.sh        # one run per category, sequentially
 ```
 
 or directly:
 
 ```bash
-python AmazonReviewCoordination_single.py
+python AmazonReviewCoordinationDF.py
+```
+
+Paths and Spark settings can be overridden per run:
+
+```bash
+REVIEWS_PATH=data/reviews/Video_Games.jsonl.gz \
+METADATA_PATH=data/meta/meta_Video_Games.jsonl.gz \
+OUTPUT_ROOT=output/video_games \
+SPARK_MASTER=local[4] DRIVER_MEMORY=8g ./run_local.sh
 ```
 
 Results are written under `output/`: enriched reviews as Parquet partitioned by
@@ -100,12 +123,24 @@ memory-only and fails with `OutOfMemoryError` once the data no longer fits.
 On a single machine, lower `MASTER` to something like `local[4]`: each Python
 worker costs memory outside the JVM heap.
 
-## Current limitations
+## GraphFrames
 
-- Connected components use custom label propagation, not GraphFrames.
+Connected components use GraphFrames, fetched at startup:
+
+```text
+spark.jars.packages     graphframes:graphframes:0.8.4-spark3.5-s_2.12
+spark.jars.repositories https://repos.spark-packages.org
+```
+
+It runs with `algorithm="graphx"`; the default implementation launches
+hundreds of stages even on a graph of a few hundred vertices. Set
+`USE_GRAPHFRAMES=0` to fall back to the built-in DataFrame label propagation,
+which is useful offline or to check the two agree.
+
+## Current limitations
 - `local[*]` is a single machine, not a cluster. The multi-node experiment and
   the one-worker versus multi-worker comparison are still to be done, and the
   report should not describe a local run as a distributed experiment.
-- `write_pair_audit` writes with ordinary Python file I/O, so it only works
-  where the driver can reach the path. It needs a distributed writer before
-  running against HDFS or S3.
+- The full 24.4M-review run has not completed on a single machine yet. Use
+  `run_all_categories.sh` if a single pass runs out of memory; note that
+  account pairs whose shared groups straddle two categories are then missed.

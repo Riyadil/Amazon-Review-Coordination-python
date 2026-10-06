@@ -7,3 +7,7 @@ numpy==1.26.4
 # PySpark still imports distutils, which Python 3.12 removed from the standard
 # library; setuptools provides it.
 setuptools
+
+# GraphFrames: the Python wrapper comes from pip, the JAR is fetched at startup
+# from the Spark Packages repo (see spark.jars.packages in the pipeline).
+graphframes

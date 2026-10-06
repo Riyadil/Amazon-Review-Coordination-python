@@ -29,7 +29,7 @@ for c in $CATEGORIES; do
   REVIEWS_PATH="data/reviews/$c.jsonl.gz" \
   METADATA_PATH="data/meta/meta_$c.jsonl.gz" \
   OUTPUT_ROOT="$out" \
-  "$VENV/bin/python" AmazonReviewCoordination_single.py > "$log" 2>&1
+  "$VENV/bin/python" AmazonReviewCoordinationDF.py > "$log" 2>&1
   status=$?
   secs=$(( $(date +%s) - start ))
   if [ $status -eq 0 ] && grep -q "PIPELINE COMPLETED SUCCESSFULLY" "$log"; then

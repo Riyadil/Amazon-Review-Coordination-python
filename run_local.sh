@@ -14,4 +14,4 @@ mkdir -p "$SPARK_LOCAL_DIRS" logs
 
 STAMP=$(date +%Y%m%d-%H%M%S)
 echo "starting run $STAMP  (log: logs/run-$STAMP.log)"
-"$VENV/bin/python" AmazonReviewCoordination_single.py 2>&1 | tee "logs/run-$STAMP.log"
+"$VENV/bin/python" AmazonReviewCoordinationDF.py 2>&1 | tee "logs/run-$STAMP.log"
