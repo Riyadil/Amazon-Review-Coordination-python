@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Spark / project-generated data
+output/*
+checkpoints/*
+
+# Local datasets can be very large; keep them out of Git unless explicitly required.
+data/*
+
+# Local environment files
+.env
+.venv/
+venv/

@@ -1,0 +1,4 @@
+# Python dependencies for the CSC 7740 Amazon Review Coordination project.
+# Java 17 is installed by Dockerfile because PySpark requires a JVM.
+
+pyspark==3.5.7

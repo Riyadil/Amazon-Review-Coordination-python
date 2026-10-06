@@ -1,0 +1,31 @@
+{
+  "name": "Amazon Review Coordination - PySpark",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+    "PYSPARK_PYTHON": "python3",
+    "PYSPARK_DRIVER_PYTHON": "python3",
+    "SPARK_LOCAL_IP": "127.0.0.1",
+    "PYTHONUNBUFFERED": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  },
+  "postCreateCommand": "python -c \"import pyspark; print('PySpark', pyspark.__version__)\" && java -version 2>&1 | head -n 1",
+  "forwardPorts": [],
+  "remoteEnv": {
+    "PYTHONPATH": "/workspace"
+  }
+}
