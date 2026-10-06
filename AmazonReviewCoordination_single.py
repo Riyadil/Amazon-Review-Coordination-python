@@ -1,5 +1,5 @@
 # ============================================================
-# AmazonReviewPipeline.py
+# AmazonReviewCoordination_single.py
 # ============================================================
 #
 #
@@ -43,16 +43,27 @@
 # ============================================================
 # File Paths
 # ============================================================
+#
+# Every path and Spark setting below can be overridden with an environment
+# variable, so a single checkout can run several categories in sequence:
+#
+#   REVIEWS_PATH=data/reviews/Video_Games.jsonl.gz \
+#   METADATA_PATH=data/meta/meta_Video_Games.jsonl.gz \
+#   OUTPUT_ROOT=output/video_games ./run_local.sh
 
-REVIEWS_PATH = "data/All_Beauty.jsonl"
+import os as _os
 
-METADATA_PATH = "data/meta_All_Beauty.jsonl"
+_OUTPUT_ROOT = _os.environ.get("OUTPUT_ROOT", "output")
+
+REVIEWS_PATH = _os.environ.get("REVIEWS_PATH", "data/reviews/*.jsonl.gz")
+
+METADATA_PATH = _os.environ.get("METADATA_PATH", "data/meta/*.jsonl.gz")
 
 # Use a new directory for each run.
-OUTPUT_PATH = "output/amazon_output"
+OUTPUT_PATH = _OUTPUT_ROOT + "/amazon_output"
 
 # Local CSV for manual review of repeated user pairs.
-PAIR_AUDIT_PATH = "output/repeated_pair_audit.csv"
+PAIR_AUDIT_PATH = _OUTPUT_ROOT + "/repeated_pair_audit.csv"
 
 
 # ============================================================
@@ -61,9 +72,9 @@ PAIR_AUDIT_PATH = "output/repeated_pair_audit.csv"
 
 APP_NAME = "Amazon Review Coordination Analysis"
 
-MASTER = "local[*]"
+MASTER = _os.environ.get("SPARK_MASTER", "local[*]")
 
-DRIVER_MEMORY = "4g"
+DRIVER_MEMORY = _os.environ.get("DRIVER_MEMORY", "4g")
 
 # Number of Spark partitions for large operations.
 DEFAULT_PARTITIONS = 200
@@ -271,32 +282,32 @@ MAX_USERS_PER_COMPONENT = 1000
 
 # Enriched review data.
 TEXT_SIMILARITY_OUTPUT_PATH = (
-    "output/text_similarity"
+    _OUTPUT_ROOT + "/text_similarity"
 )
 
 # Coordination-group summaries.
 GROUP_OUTPUT_PATH = (
-    "output/coordination_groups"
+    _OUTPUT_ROOT + "/coordination_groups"
 )
 
 # Runtime benchmark results.
 BENCHMARK_OUTPUT_PATH = (
-    "output/benchmark"
+    _OUTPUT_ROOT + "/benchmark"
 )
 
 # Detailed component-level review statistics.
 COMPONENT_REVIEW_OUTPUT_PATH = (
-    "output/component_review_analysis"
+    _OUTPUT_ROOT + "/component_review_analysis"
 )
 
 # Text-similarity pair output.
 TEXT_PAIR_OUTPUT_PATH = (
-    "output/text_similarity_pairs"
+    _OUTPUT_ROOT + "/text_similarity_pairs"
 )
 
 # Final coordination-group results.
 FINAL_GROUP_OUTPUT_PATH = (
-    "output/final_coordination_groups"
+    _OUTPUT_ROOT + "/final_coordination_groups"
 )
 
 # Names used by the main pipeline. Keep these aliases in one place so
@@ -977,6 +988,13 @@ def write_pair_audit(
     #
     # For HDFS/S3-only deployments, replace this with an
     # appropriate distributed writer.
+    import os
+
+    directory = os.path.dirname(output_path)
+
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+
     with open(
         output_path,
         "w",
@@ -1066,7 +1084,7 @@ def connected_components(
             ]
         )
         .distinct()
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
     # Build adjacency lists.
@@ -1486,7 +1504,7 @@ def write_parquet(
 
 import time
 
-from pyspark import SparkConf, SparkContext
+from pyspark import SparkConf, SparkContext, StorageLevel
 from pyspark.sql import SQLContext, Row
 from pyspark.sql.functions import (
     col,
@@ -1716,6 +1734,29 @@ def aggregate_text_similarity(values):
 # Main
 # ============================================================
 
+# ============================================================
+# Input Schemas
+# ============================================================
+
+REVIEW_SCHEMA = StructType([
+    StructField("user_id", StringType()),
+    StructField("asin", StringType()),
+    StructField("parent_asin", StringType()),
+    StructField("rating", DoubleType()),
+    StructField("timestamp", LongType()),
+    StructField("text", StringType()),
+    StructField("helpful_vote", LongType()),
+    StructField("verified_purchase", BooleanType())
+])
+
+METADATA_SCHEMA = StructType([
+    StructField("parent_asin", StringType()),
+    StructField("main_category", StringType()),
+    StructField("title", StringType()),
+    StructField("average_rating", DoubleType())
+])
+
+
 def main():
 
     pipeline_start = time.time()
@@ -1794,6 +1835,10 @@ def main():
             "spark.driver.memory",
             DRIVER_MEMORY
         )
+        .set(
+            "spark.sql.caseSensitive",
+            "true"
+        )
     )
 
     sc = SparkContext(
@@ -1823,6 +1868,7 @@ def main():
     reviews_df = (
         sql_context
         .read
+        .schema(REVIEW_SCHEMA)
         .json(
             REVIEWS_PATH
         )
@@ -1849,8 +1895,13 @@ def main():
     metadata_df = (
         sql_context
         .read
+        .schema(METADATA_SCHEMA)
         .json(
             METADATA_PATH
+        )
+        .withColumnRenamed(
+            "main_category",
+            "category"
         )
     )
 
@@ -1875,12 +1926,12 @@ def main():
     parsed_reviews = (
         reviews_df
         .rdd
-        .map(parse_review)
+        .map(lambda row: parse_review(row.asDict()))
         .filter(
             lambda x:
                 x is not None
         )
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
     valid_review_count = (
@@ -1900,12 +1951,12 @@ def main():
     parsed_metadata = (
         metadata_df
         .rdd
-        .map(parse_metadata)
+        .map(lambda row: parse_metadata(row.asDict()))
         .filter(
             lambda x:
                 x is not None
         )
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
     valid_metadata_count = (
@@ -1959,7 +2010,7 @@ def main():
             lambda x:
                 x is not None
         )
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
     enriched_count = (
@@ -2068,7 +2119,7 @@ def main():
         .flatMap(
             split_large_group
         )
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
     candidate_group_count = (
@@ -2144,7 +2195,7 @@ def main():
                 len(x[1])
                 >= MIN_REPEATED_GROUPS
         )
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
     repeated_pair_count = (
@@ -2174,7 +2225,7 @@ def main():
                 len(x[1])
             )
         )
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
     vertices = (
@@ -2186,7 +2237,7 @@ def main():
             ]
         )
         .distinct()
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
     vertex_count = (
@@ -2247,7 +2298,7 @@ def main():
             simple_edges,
             LABEL_PROPAGATION_ITERATIONS
         )
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
 
@@ -2331,7 +2382,7 @@ def main():
         .map(
             calculate_initial_score
         )
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
 
@@ -2572,7 +2623,7 @@ def main():
             on="user_id",
             how="inner"
         )
-        .cache()
+        .persist(StorageLevel.MEMORY_AND_DISK)
     )
 
 

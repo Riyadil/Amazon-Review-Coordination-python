@@ -3,3 +3,7 @@
 
 pyspark==3.5.7
 numpy==1.26.4
+
+# PySpark still imports distutils, which Python 3.12 removed from the standard
+# library; setuptools provides it.
+setuptools
