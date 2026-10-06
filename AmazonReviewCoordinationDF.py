@@ -61,8 +61,18 @@ MINHASH_NUM_HASH_TABLES = 5
 
 SIZE_NORMALIZATION = 20.0
 REPETITION_NORMALIZATION = 10.0
-W_SIZE, W_DENSITY, W_REPETITION = 0.20, 0.20, 0.20
-W_TIME, W_RATING, W_TEXT = 0.15, 0.10, 0.15
+# A group whose ratings sit two stars away from the product's catalog average
+# is already extreme, so that is where this signal saturates.
+DEVIATION_NORMALIZATION = 2.0
+
+# Seven signals, weights sum to 1.0. The proposal lists deviation from the
+# catalog average rating as a ranking factor, so it carries its own weight
+# rather than only being reported.
+W_SIZE, W_DENSITY, W_REPETITION = 0.18, 0.18, 0.18
+W_TIME, W_RATING, W_TEXT, W_DEVIATION = 0.13, 0.09, 0.14, 0.10
+
+assert abs(W_SIZE + W_DENSITY + W_REPETITION
+           + W_TIME + W_RATING + W_TEXT + W_DEVIATION - 1.0) < 1e-9
 
 TOP_N = 20
 MAX_REVIEWS_PER_COMPONENT = int(os.environ.get("MAX_REVIEWS_PER_COMPONENT", "500"))
@@ -324,13 +334,17 @@ def score(stats, text_similarity):
         .withColumn("similar_pairs", F.coalesce(F.col("similar_pairs"), F.lit(0)))
         .withColumn("size_signal", clamp(F.col("users") / F.lit(SIZE_NORMALIZATION)))
         .withColumn("repetition_signal", clamp(F.col("avg_repetition") / F.lit(REPETITION_NORMALIZATION)))
+        .withColumn("deviation_signal",
+                    clamp(F.coalesce(F.col("avg_rating_deviation"), F.lit(0.0))
+                          / F.lit(DEVIATION_NORMALIZATION)))
         .withColumn("coordination_score",
                     F.lit(W_SIZE) * clamp(F.col("size_signal"))
                     + F.lit(W_DENSITY) * clamp(F.col("density"))
                     + F.lit(W_REPETITION) * clamp(F.col("repetition_signal"))
                     + F.lit(W_TIME) * clamp(F.coalesce(F.col("time_concentration"), F.lit(0.0)))
                     + F.lit(W_RATING) * clamp(F.coalesce(F.col("rating_agreement"), F.lit(0.0)))
-                    + F.lit(W_TEXT) * clamp(F.col("avg_text_similarity")))
+                    + F.lit(W_TEXT) * clamp(F.col("avg_text_similarity"))
+                    + F.lit(W_DEVIATION) * clamp(F.col("deviation_signal")))
     )
 
 
@@ -350,13 +364,14 @@ def text_similarity(spark, enriched, components):
                                % MIN_TOKEN_LENGTH)))
         .where(F.size("tokens") > 0)
         .withColumn("doc_id", F.monotonically_increasing_id())
-        .select("doc_id", "component_id", "tokens")
+        .select("doc_id", "user_id", "component_id", "tokens")
     )
 
     empty_agg = spark.createDataFrame(
         [], "component_id string, avg_text_similarity double, similar_pairs long")
     empty_pairs = spark.createDataFrame(
-        [], "component_id string, doc_a long, doc_b long, similarity double")
+        [], "component_id string, doc_a long, doc_b long, "
+            "user_a string, user_b string, similarity double")
 
     if docs.limit(1).count() == 0:
         return empty_agg, empty_pairs
@@ -374,9 +389,14 @@ def text_similarity(spark, enriched, components):
         model.approxSimilarityJoin(featurised, featurised, max_distance, distCol="jaccard_distance")
         .where(F.col("datasetA.doc_id") < F.col("datasetB.doc_id"))
         .where(F.col("datasetA.component_id") == F.col("datasetB.component_id"))
+        # Two reviews by the same person are not evidence of coordination
+        # between accounts.
+        .where(F.col("datasetA.user_id") != F.col("datasetB.user_id"))
         .select(F.col("datasetA.component_id").alias("component_id"),
                 F.col("datasetA.doc_id").alias("doc_a"),
                 F.col("datasetB.doc_id").alias("doc_b"),
+                F.col("datasetA.user_id").alias("user_a"),
+                F.col("datasetB.user_id").alias("user_b"),
                 (F.lit(1.0) - F.col("jaccard_distance")).alias("similarity"))
     ).cache()
 
@@ -413,6 +433,20 @@ def pair_audit(edges):
         .select("user1", "user2", "repeated_groups",
                 "has_suffix_id", "same_base_account")
     )
+
+
+def drop_same_account_pairs(edges):
+    """
+    Remove edges joining two IDs that differ only by a numeric suffix.
+
+    Those are one person (ABC and ABC_1), so an edge between them is an
+    artefact. They must go before connected components, not after: such pairs
+    co-review constantly, score high on repetition, and would otherwise merge
+    real accounts into inflated components and rank near the top.
+    """
+    strip_suffix = lambda c: F.regexp_replace(c, r"([_-][0-9]+|\([0-9]+\))+$", "")
+    return edges.where(
+        strip_suffix(F.col("user1")) != strip_suffix(F.col("user2")))
 
 
 def suspicious_reviews(enriched, components):
@@ -485,12 +519,23 @@ def main():
     n_groups = step("candidate groups", lambda: grouped.select("group_key").distinct().count())
     print("Candidate groups: %d" % n_groups)
 
-    edges = repeated_pairs(grouped).cache()
-    n_edges = step("repeated pairs (self-join)", lambda: edges.count())
-    print("Repeated user pairs: %d" % n_edges)
+    edges_all = repeated_pairs(grouped).cache()
+    n_edges_all = step("repeated pairs (self-join)", lambda: edges_all.count())
+    print("Repeated user pairs: %d" % n_edges_all)
+
+    audit = pair_audit(edges_all).cache()
+    n_flagged = step("pair audit", lambda: audit.count())
+    edges = drop_same_account_pairs(edges_all).cache()
+    n_edges = edges.count()
+    print("Flagged as possible same-account artefacts: %d" % n_flagged)
+    print("Dropped before graph construction: %d; pairs remaining: %d"
+          % (n_edges_all - n_edges, n_edges))
+    if n_flagged:
+        audit.select("user1", "user2", "repeated_groups", "same_base_account") \
+             .orderBy(F.col("repeated_groups").desc()).show(10, truncate=False)
 
     if n_edges == 0:
-        print("\nNo account pairs met the %d-group threshold; nothing to rank." % MIN_REPEATED_GROUPS)
+        print("\nNo usable account pairs after filtering; nothing to rank.")
         spark.stop()
         return
 
@@ -514,14 +559,8 @@ def main():
         sim_pairs.write.mode("overwrite").parquet(OUTPUT_ROOT + "/text_similarity_pairs"),
     ))
 
-    audit = pair_audit(edges).cache()
-    n_flagged = step("pair audit", lambda: audit.count())
     audit.coalesce(1).write.mode("overwrite").option("header", True) \
          .csv(OUTPUT_ROOT + "/repeated_pair_audit")
-    print("Pairs flagged as possible same-account artefacts: %d of %d" % (n_flagged, n_edges))
-    if n_flagged:
-        audit.select("user1", "user2", "repeated_groups", "same_base_account") \
-             .orderBy(F.col("repeated_groups").desc()).show(10, truncate=False)
 
     step("write suspicious reviews", lambda:
          suspicious_reviews(enriched, components)
@@ -545,7 +584,7 @@ def main():
     print("Repeated pairs    : %d" % n_edges)
     print("Graph vertices    : %d" % n_vertices)
     print("Components        : %d" % n_components)
-    print("Flagged pairs     : %d (same-account artefacts)" % n_flagged)
+    print("Flagged pairs     : %d (dropped before the graph)" % (n_edges_all - n_edges))
     print("Total runtime     : %.1f seconds" % total)
     spark.stop()
 
