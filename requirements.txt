@@ -2,3 +2,4 @@
 # Java 17 is installed by Dockerfile because PySpark requires a JVM.
 
 pyspark==3.5.7
+numpy==1.26.4
