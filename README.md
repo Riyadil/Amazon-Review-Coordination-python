@@ -23,10 +23,17 @@ use GraphFrames. Two earlier versions have been removed:
   in the JVM-to-Python writer, where neither disk spill nor a smaller cache
   helps.
 
-The current version was validated against the row-based one on the Video Games
-category and reproduces every figure exactly - 4,624,615 enriched reviews,
-3,428,395 candidate groups, 232 repeated pairs, 349 graph vertices and 8
-flagged same-account pairs - in 607s against 1003s.
+The current version was validated on the Video Games category: 4,624,615
+reviews, 3,428,395 candidate groups, and 232 initial repeated pairs. It removes
+8 suffixed-ID same-account artifacts, leaving 224 usable pairs, 338 vertices,
+and 129 components. The corrected run took 617 seconds, versus 1003 seconds
+for the earlier row-based implementation.
+
+The full four-category local run also completed successfully: 24,447,530
+reviews produced 1,051 initial pairs, 1,038 usable pairs after 13 artifacts
+were removed, 1,294 vertices, and 443 components. It took 6,050.5 seconds
+(about 1 hour 41 minutes). The log is `logs/full-run.log` and the Parquet
+results are under `output/df_full/`.
 
 ## Repository layout
 
@@ -100,8 +107,8 @@ Results are written under `output/`: enriched reviews as Parquet partitioned by
 category and year, plus coordination groups, text-similarity pairs, suspicious
 reviews and a runtime benchmark.
 
-`OUTPUT_PATH` is written with mode `errorifexists`, so delete `output/` between
-runs or point it somewhere new.
+Each result directory is written with mode `overwrite`. Use a different
+`OUTPUT_ROOT` when you need to preserve an earlier run.
 
 ## Dataset notes
 
@@ -118,10 +125,11 @@ these. Anything editing the parsers should preserve them:
 
 ## Memory
 
-Large runs persist with `MEMORY_AND_DISK` rather than `cache()`, which is
-memory-only and fails with `OutOfMemoryError` once the data no longer fits.
-On a single machine, lower `MASTER` to something like `local[4]`: each Python
-worker costs memory outside the JVM heap.
+The DataFrame implementation avoids converting all reviews to Python objects
+and persists large intermediate tables with `MEMORY_AND_DISK`, so partitions
+can spill when memory is tight. The full 24.4M-review run completed locally.
+On a single machine, use a conservative setting such as `local[4]` because
+Spark executors, Python, and the operating system all share the same memory.
 
 ## GraphFrames
 
@@ -141,6 +149,9 @@ which is useful offline or to check the two agree.
 - `local[*]` is a single machine, not a cluster. The multi-node experiment and
   the one-worker versus multi-worker comparison are still to be done, and the
   report should not describe a local run as a distributed experiment.
-- The full 24.4M-review run has not completed on a single machine yet. Use
-  `run_all_categories.sh` if a single pass runs out of memory; note that
-  account pairs whose shared groups straddle two categories are then missed.
+- Group-level rating and timing signals summarize each account's full review
+  history within the input, rather than only the reviews shared by one graph
+  component. This scope must be stated clearly when interpreting scores.
+- The largest full-run component contains 223 accounts but is sparse. It may
+  be a chain formed by bridging accounts, so it should be investigated and
+  described as a candidate coordination group, not proof of fraud.

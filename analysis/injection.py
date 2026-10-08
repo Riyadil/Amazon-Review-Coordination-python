@@ -5,8 +5,9 @@
 # of each planted ring is recovered.
 #
 # The rings deliberately span the detector's edge: some share fewer products
-# than the minimum-repeats threshold (should NOT be found), some are spread
-# across days (should degrade), some have partial participation.
+# than the minimum-repeats threshold (should NOT be found), some accounts
+# review the same products outside the time window, and some have partial
+# participation.
 #
 #   REVIEWS_PATH=data/reviews/Video_Games.jsonl.gz python analysis/injection.py
 
@@ -22,13 +23,13 @@ LARGE_GROUP_THRESHOLD, LARGE_GROUP_BUCKET_HOURS = 100, 6
 BASE_TS = 1579000000          # mid-January 2020, inside the data range
 random.seed(20260101)
 
-# (name, accounts, products, hours spread over, participation rate, expectation)
+# (name, accounts, products, account-time spread, participation, expectation)
 RINGS = [
     ("R1_tight_3acct_5prod",   3,  5,   0, 1.0,  "detect"),
     ("R2_tight_5acct_3prod",   5,  3,   0, 1.0,  "detect"),
     ("R3_large_10acct_3prod", 10,  3,   0, 1.0,  "detect"),
     ("R4_below_thresh_2prod",  5,  2,   0, 1.0,  "miss (2 < %d)" % MIN_REPEATED),
-    ("R5_spread_5acct_5prod",  5,  5,  96, 1.0,  "degrade"),
+    ("R5_staggered_5acct",     5,  5,  96, 1.0,  "miss (outside 24h window)"),
     ("R6_partial_8acct_6prod", 8,  6,   0, 0.6,  "partial"),
 ]
 
@@ -39,16 +40,18 @@ SCHEMA = StructType([StructField("user_id", StringType()),
 
 def make_rings():
     rows, truth = [], {}
-    for name, n_acct, n_prod, spread_h, participation, _ in RINGS:
+    for name, n_acct, n_prod, account_spread_h, participation, _ in RINGS:
         accounts = ["SYN_%s_U%02d" % (name[:2], i) for i in range(n_acct)]
         products = ["SYN_%s_P%02d" % (name[:2], j) for j in range(n_prod)]
         truth[name] = set(accounts)
-        for j, product in enumerate(products):
-            # each product reviewed inside one hour, products spread if asked
-            offset = 0 if spread_h == 0 else int(j * spread_h * 3600 / max(1, n_prod - 1))
-            for account in accounts:
+        for product in products:
+            # For the staggered ring, accounts review each same product across
+            # several days. This genuinely tests the time-window boundary.
+            for i, account in enumerate(accounts):
                 if participation < 1.0 and random.random() > participation:
                     continue
+                offset = (0 if account_spread_h == 0 else
+                          int(i * account_spread_h * 3600 / max(1, n_acct - 1)))
                 jitter = random.randint(0, 1800)
                 rows.append((account, product, (BASE_TS + offset + jitter) * 1000))
     return rows, truth
@@ -59,7 +62,8 @@ def main():
              .appName("injection-test")
              .config("spark.driver.memory", os.environ.get("DRIVER_MEMORY", "8g"))
              .config("spark.sql.shuffle.partitions", "200")
-             .config("spark.sql.caseSensitive", "true").getOrCreate())
+             .config("spark.sql.caseSensitive", "true")
+             .config("spark.hadoop.fs.defaultFS", "file:///").getOrCreate())
     spark.sparkContext.setLogLevel("ERROR")
 
     real = (spark.read.schema(SCHEMA).json(REVIEWS_PATH)
@@ -114,7 +118,7 @@ def main():
     header = "%-26s %6s %9s %9s %9s  %s" % ("ring", "acct", "found", "recall", "foreign", "expected")
     print(header); print("-" * len(header))
     rows = []
-    for name, n_acct, n_prod, spread_h, participation, expectation in RINGS:
+    for name, n_acct, n_prod, account_spread_h, participation, expectation in RINGS:
         planted_accounts = truth[name]
         best, foreign = set(), 0
         for comp in members.values():
@@ -124,12 +128,12 @@ def main():
         recall = len(best) / float(n_acct)
         print("%-26s %6d %9d %8.0f%% %9d  %s"
               % (name, n_acct, len(best), recall * 100, foreign, expectation))
-        rows.append((name, n_acct, n_prod, spread_h, participation,
+        rows.append((name, n_acct, n_prod, account_spread_h, participation,
                      len(best), round(recall, 3), foreign, expectation))
 
     os.makedirs(os.path.dirname(OUT_CSV) or ".", exist_ok=True)
     with open(OUT_CSV, "w") as fh:
-        fh.write("ring,accounts,products,spread_hours,participation,found,recall,foreign_accounts,expected\n")
+        fh.write("ring,accounts,products,account_spread_hours,participation,found,recall,foreign_accounts,expected\n")
         for r in rows:
             fh.write(",".join(str(x) for x in r) + "\n")
     print("\nwrote %s" % OUT_CSV)

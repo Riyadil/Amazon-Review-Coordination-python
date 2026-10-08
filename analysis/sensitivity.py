@@ -56,6 +56,7 @@ def main():
              .config("spark.driver.memory", os.environ.get("DRIVER_MEMORY", "8g"))
              .config("spark.sql.shuffle.partitions", "200")
              .config("spark.sql.caseSensitive", "true")
+             .config("spark.hadoop.fs.defaultFS", "file:///")
              .getOrCreate())
     spark.sparkContext.setLogLevel("ERROR")
 
@@ -71,7 +72,7 @@ def main():
     strip = lambda c: F.regexp_replace(c, r"([_-][0-9]+|\([0-9]+\))+$", "")
     rows = []
     header = "%-9s %9s %9s %8s %8s %8s %8s %9s" % (
-        "window", "groups", "pairs>=2", "thresh", "pairs", "users", "comps", "largest")
+        "window", "groups", "candidates", "thresh", "pairs", "users", "comps", "largest")
     print(header); print("-" * len(header))
 
     for hours in WINDOWS_HOURS:
@@ -100,7 +101,9 @@ def main():
                        # same-account artefacts removed, as the pipeline does
                        .where(strip(F.col("user1")) != strip(F.col("user2")))
                        .cache())
-        base_pairs = pair_counts.count()
+        # All unique account pairs that share at least one product-time group.
+        # This count is independent of the tested repetition threshold.
+        candidate_pairs = pair_counts.count()
 
         for t in THRESHOLDS:
             kept = pair_counts.where(F.col("repeated_groups") >= F.lit(t))
@@ -109,8 +112,9 @@ def main():
             users = len({u for p in collected for u in p})
             comps, largest = components_from_edges(collected)
             print("%-9s %9d %9d %8d %8d %8d %8d %9d"
-                  % ("%dh" % hours, n_groups, base_pairs, t, n_pairs, users, comps, largest))
-            rows.append(dict(window_hours=hours, groups=n_groups, pairs_ge2=base_pairs,
+                  % ("%dh" % hours, n_groups, candidate_pairs, t, n_pairs, users, comps, largest))
+            rows.append(dict(window_hours=hours, groups=n_groups,
+                             candidate_pairs=candidate_pairs,
                              threshold=t, pairs=n_pairs, users=users,
                              components=comps, largest_component=largest))
         pair_counts.unpersist()

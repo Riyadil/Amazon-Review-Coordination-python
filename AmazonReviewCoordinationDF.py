@@ -46,7 +46,8 @@ SHUFFLE_PARTITIONS = int(os.environ.get("SHUFFLE_PARTITIONS", "200"))
 USE_GRAPHFRAMES = os.environ.get("USE_GRAPHFRAMES", "1") == "1"
 GRAPHFRAMES_PACKAGE = os.environ.get(
     "GRAPHFRAMES_PACKAGE", "graphframes:graphframes:0.8.4-spark3.5-s_2.12")
-CHECKPOINT_DIR = os.environ.get("CHECKPOINT_DIR", "/home/researchuser2/sparktmp/ckpt")
+CHECKPOINT_DIR = os.environ.get(
+    "CHECKPOINT_DIR", "/tmp/amazon-review-coordination-checkpoint")
 
 TIME_BUCKET_HOURS = 24
 LARGE_GROUP_THRESHOLD = 100
@@ -482,6 +483,7 @@ def main():
         .config("spark.driver.memory", DRIVER_MEMORY)
         .config("spark.sql.shuffle.partitions", SHUFFLE_PARTITIONS)
         .config("spark.sql.caseSensitive", "true")
+        .config("spark.hadoop.fs.defaultFS", "file:///")
     )
     if USE_GRAPHFRAMES:
         builder = (builder
