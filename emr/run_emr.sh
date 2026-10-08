@@ -17,9 +17,12 @@ export CHECKPOINT_DIR="${CHECKPOINT_DIR:-hdfs:///user/hadoop/amazon-review-check
 export USE_GRAPHFRAMES=1
 export GRAPHFRAMES_PACKAGE="${GRAPHFRAMES_PACKAGE:-graphframes:graphframes:0.8.4-spark3.5-s_2.12}"
 
+# In client mode the driver JVM is already running by the time the code calls
+# SparkSession.builder, so spark.driver.memory must be given to spark-submit.
 spark-submit \
   --master yarn \
   --deploy-mode client \
+  --driver-memory "$DRIVER_MEMORY" \
   --repositories https://repos.spark-packages.org \
   --packages "$GRAPHFRAMES_PACKAGE" \
   "$LOCAL_CODE"

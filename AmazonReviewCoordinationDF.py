@@ -59,6 +59,7 @@ MIN_TEXT_LENGTH = 30
 MIN_TOKEN_LENGTH = 2
 TEXT_SIMILARITY_THRESHOLD = 0.70
 MINHASH_NUM_HASH_TABLES = 5
+MINHASH_SEED = int(os.environ.get("MINHASH_SEED", "42"))
 
 SIZE_NORMALIZATION = 20.0
 REPETITION_NORMALIZATION = 10.0
@@ -382,8 +383,11 @@ def text_similarity(spark, enriched, components):
     featurised = HashingTF(
         inputCol="tokens", outputCol="features", numFeatures=1 << 18).transform(docs)
 
+    # Seeded so the hash functions - and therefore the similarity scores and
+    # the final ranking - are reproducible between runs.
     model = MinHashLSH(inputCol="features", outputCol="hashes",
-                       numHashTables=MINHASH_NUM_HASH_TABLES).fit(featurised)
+                       numHashTables=MINHASH_NUM_HASH_TABLES,
+                       seed=MINHASH_SEED).fit(featurised)
 
     max_distance = 1.0 - TEXT_SIMILARITY_THRESHOLD
     pairs = (
