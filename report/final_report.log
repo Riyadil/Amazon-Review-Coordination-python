@@ -593,172 +593,146 @@ Underfull \hbox (badness 10000) in paragraph at lines 398--412
 
 [6] [7] [8] [9] [10]
 LaTeX Font Info:    Trying to load font information for TS1+ptm on input line 7
-25.
+26.
  (ts1ptm.fd
 File: ts1ptm.fd 2001/06/04 font definitions for TS1/ptm.
 ) [11]
-Underfull \hbox (badness 10000) in paragraph at lines 743--752
+Underfull \hbox (badness 10000) in paragraph at lines 744--753
 []\T1/ptm/b/n/12 Root cause. \T1/ptm/m/n/12 In \T1/pcr/m/n/12 component_stats\T
 1/ptm/m/n/12 , the in-ter-me-di-ate \T1/pcr/m/n/12 member_reviews =
  []
 
 [12] [13]
-Underfull \hbox (badness 1515) in paragraph at lines 865--865
+Underfull \hbox (badness 1515) in paragraph at lines 873--873
 []|\T1/ptm/b/n/10.95 Primary Func-tion-al-ity / Data
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 866--867
+Underfull \hbox (badness 10000) in paragraph at lines 874--875
 []|\T1/ptm/b/n/10.95 AI Cod-ing As-sis-tant Us-age
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 869--869
+Underfull \hbox (badness 10000) in paragraph at lines 877--877
 []|\T1/pcr/m/n/10.95 AmazonReview
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 870--873
+Underfull \hbox (badness 10000) in paragraph at lines 878--881
 []|\T1/ptm/m/n/10.95 Complete PyS-park DataFrame
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 870--873
+Underfull \hbox (badness 10000) in paragraph at lines 878--881
 \T1/ptm/m/n/10.95 pipeline: schema-explicit in-
  []
 
 
-Underfull \hbox (badness 6910) in paragraph at lines 870--873
+Underfull \hbox (badness 6910) in paragraph at lines 878--881
 \T1/ptm/m/n/10.95 gest, meta-data join, adap-tive
  []
 
 
-Underfull \hbox (badness 7522) in paragraph at lines 870--873
+Underfull \hbox (badness 7522) in paragraph at lines 878--881
 \T1/ptm/m/n/10.95 time buck-et-ing, co-occurrence
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 870--873
+Underfull \hbox (badness 10000) in paragraph at lines 878--881
 \T1/ptm/m/n/10.95 self-join, Graph-Frames con-
  []
 
 
-Underfull \hbox (badness 2310) in paragraph at lines 870--873
+Underfull \hbox (badness 2310) in paragraph at lines 878--881
 \T1/ptm/m/n/10.95 nected com-po-nents with label-
  []
 
 
-Underfull \hbox (badness 3229) in paragraph at lines 870--873
+Underfull \hbox (badness 3229) in paragraph at lines 878--881
 \T1/ptm/m/n/10.95 propagation fall-back, Min-Hash
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 870--873
+Underfull \hbox (badness 10000) in paragraph at lines 878--881
 \T1/ptm/m/n/10.95 scor-ing, same-account pair
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 874--878
+Underfull \hbox (badness 10000) in paragraph at lines 882--886
 []|\T1/ptm/m/n/10.95 Extensive. Full DataFrame
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 874--878
+Underfull \hbox (badness 10000) in paragraph at lines 882--886
 \T1/ptm/m/n/10.95 and the \T1/pcr/m/n/10.95 WRITE_ENRICHED
  []
 
 
-Underfull \hbox (badness 3590) in paragraph at lines 874--878
+Underfull \hbox (badness 3590) in paragraph at lines 882--886
 \T1/ptm/m/n/10.95 / \T1/pcr/m/n/10.95 fs.defaultFS \T1/ptm/m/n/10.95 fixes were
 
  []
 
 
-Underfull \hbox (badness 7704) in paragraph at lines 880--883
+Underfull \hbox (badness 7704) in paragraph at lines 888--891
 []|\T1/ptm/m/n/10.95 EMR step en-try point: re-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 880--883
+Underfull \hbox (badness 10000) in paragraph at lines 888--891
 \T1/ptm/m/n/10.95 solves the clus-ter's real
  []
 
 
-Underfull \hbox (badness 3965) in paragraph at lines 880--883
+Underfull \hbox (badness 3965) in paragraph at lines 888--891
 \T1/pcr/m/n/10.95 fs.defaultFS\T1/ptm/m/n/10.95 , pins stag-ing
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 880--883
+Underfull \hbox (badness 10000) in paragraph at lines 888--891
 \T1/ptm/m/n/10.95 point URIs to fully-qualified
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 880--883
+Underfull \hbox (badness 10000) in paragraph at lines 888--891
 \T1/pcr/m/n/10.95 hdfs://host:port\T1/ptm/m/n/10.95 , cre-
  []
 
 
-Underfull \hbox (badness 6608) in paragraph at lines 880--883
+Underfull \hbox (badness 6608) in paragraph at lines 888--891
 \T1/ptm/m/n/10.95 ates the check-point di-rec-tory,
  []
 
 
-Underfull \hbox (badness 3815) in paragraph at lines 880--883
+Underfull \hbox (badness 3815) in paragraph at lines 888--891
 \T1/ptm/m/n/10.95 in-vokes \T1/pcr/m/n/10.95 spark-submit \T1/ptm/m/n/10.95 wit
 h
  []
 
 
-Underfull \hbox (badness 1490) in paragraph at lines 884--886
+Underfull \hbox (badness 1490) in paragraph at lines 892--894
 \T1/ptm/m/n/10.95 rived from a spe-cific ob-served
  []
 
 
-Underfull \hbox (badness 1515) in paragraph at lines 888--889
+Underfull \hbox (badness 1515) in paragraph at lines 896--897
 \T1/ptm/m/n/10.95 NumPy, se-tup-tools and Graph-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 891--891
+Underfull \hbox (badness 10000) in paragraph at lines 899--899
 []|\T1/pcr/m/n/10.95 analysis/
  []
 
 
-Underfull \hbox (badness 1014) in paragraph at lines 892--893
+Underfull \hbox (badness 1014) in paragraph at lines 900--901
 []|\T1/ptm/m/n/10.95 Time-window $\OMS/cmsy/m/n/10.95 ^^B$ \T1/ptm/m/n/10.95 co
 -occurrence-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 896--896
+Underfull \hbox (badness 10000) in paragraph at lines 904--904
 []|\T1/pcr/m/n/10.95 analysis/
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 901--901
-[]|\T1/pcr/m/n/10.95 analysis/
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 901--901
-\T1/pcr/m/n/10.95 count_spark_
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 905--905
-[]|\T1/pcr/m/n/10.95 analysis/
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 905--905
-\T1/pcr/m/n/10.95 create_sample_
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 906--906
-[]|\T1/ptm/m/n/10.95 Builds the $\OML/cmm/m/it/10.95 <$\T1/ptm/m/n/10.95 10MB s
-am-ple
  []
 
 
@@ -767,8 +741,24 @@ Underfull \hbox (badness 10000) in paragraph at lines 909--909
  []
 
 
+Underfull \hbox (badness 10000) in paragraph at lines 909--909
+\T1/pcr/m/n/10.95 count_spark_
+ []
+
+
 Underfull \hbox (badness 10000) in paragraph at lines 913--913
 []|\T1/pcr/m/n/10.95 analysis/
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 913--913
+\T1/pcr/m/n/10.95 create_sample_
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 914--914
+[]|\T1/ptm/m/n/10.95 Builds the $\OML/cmm/m/it/10.95 <$\T1/ptm/m/n/10.95 10MB s
+am-ple
  []
 
 
@@ -777,32 +767,42 @@ Underfull \hbox (badness 10000) in paragraph at lines 917--917
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 918--918
+Underfull \hbox (badness 10000) in paragraph at lines 921--921
+[]|\T1/pcr/m/n/10.95 analysis/
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 925--925
+[]|\T1/pcr/m/n/10.95 analysis/
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 926--926
 []|\T1/ptm/m/n/10.95 Exploratory lockstep-behaviour
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 920--920
+Underfull \hbox (badness 10000) in paragraph at lines 928--928
 []|\T1/pcr/m/n/10.95 analysis/
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 921--921
+Underfull \hbox (badness 10000) in paragraph at lines 929--929
 []|\T1/ptm/m/n/10.95 Exploratory near-duplicate
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 923--923
+Underfull \hbox (badness 10000) in paragraph at lines 931--931
 []|\T1/pcr/m/n/10.95 analysis/
  []
 
 
-Underfull \hbox (badness 3849) in paragraph at lines 925--926
+Underfull \hbox (badness 3849) in paragraph at lines 933--934
 []|[]\T1/ptm/b/n/10.95 [TODO: con-firm][] \T1/ptm/m/n/10.95 (host URL
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 927--928
+Underfull \hbox (badness 10000) in paragraph at lines 935--936
 \T1/pcr/m/n/10.95 run_all_
  []
 
@@ -810,4 +810,4 @@ Underfull \hbox (badness 10000) in paragraph at lines 927--928
 Package rerunfilecheck Info: File `final_report.out' has not changed.
 (rerunfilecheck)             Checksum: 5305133B26253EE4F879294C416594ED;5933.
  )
-Output written on final_report.xdv (19 pages, 84032 bytes).
+Output written on final_report.xdv (19 pages, 84452 bytes).

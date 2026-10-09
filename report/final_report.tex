@@ -707,8 +707,9 @@ node count differed. Run A used one core node, Run B two.
   MinHash text similarity       & 276.1\,s  & 175.8\,s  & 1.57$\times$ \\
   \textbf{component stats + score} & \textbf{6{,}381.2\,s} & \textbf{5{,}359.3\,s} & \textbf{1.19$\times$} \\
   write results                 & 91.1\,s   & 56.8\,s   & 1.60$\times$ \\
+  write suspicious reviews      & 141.8\,s  & 98.3\,s   & 1.44$\times$ \\
   \midrule
-  \textbf{Total (wall clock)}   & \textbf{7{,}387\,s} & \textbf{6{,}046\,s} & \textbf{1.22$\times$} \\
+  \textbf{Total}                & \textbf{7{,}368.6\,s} & \textbf{6{,}030.4\,s} & \textbf{1.22$\times$} \\
   \bottomrule
 \end{tabular}
 \end{center}
@@ -776,6 +777,13 @@ the number of files, and an uncached intermediate, which multiplies that
 capped work by four. Re-encoding the corpus as Parquet or splittable
 block-compressed files, and caching the intermediate, would be prerequisites
 to any meaningful study of scaling beyond two workers.
+
+All logs and result sets cited in this section are retained in the
+deliverable package: the step \texttt{stdout}, \texttt{stderr} and
+\texttt{controller} logs for both runs are in
+\texttt{report/evidence/}, and the full EMR log tree, including the YARN
+container logs used for the task-rate analysis, is in
+\texttt{output/emr/logs/}.
 
 \textbf{Cost.} The entire cluster campaign --- bring-up, debugging, and both
 full-corpus runs over a 7.78-hour cluster lifetime --- cost \$5.01:

@@ -1,0 +1,56 @@
+2026-10-08T22:00:32.867774255Z INFO Ensure step 7 jar file command-runner.jar
+2026-10-08T22:00:32.868988365Z INFO Running step with ProcessBuilder
+2026-10-08T22:00:32.869130869Z INFO StepRunner: Created Runner for step 7
+INFO startExec 'hadoop jar /var/lib/aws/emr/step-runner/hadoop-jars/command-runner.jar bash -c set -euo pipefail; aws s3 cp s3://csc7740-amazon-review/project/run_emr.sh /tmp/run_emr.sh; export S3_CODE_URI=s3://csc7740-amazon-review/project/AmazonReviewCoordinationDF.py; export REVIEWS_PATH='s3://csc7740-amazon-review/data/reviews/*.jsonl.gz'; export METADATA_PATH='s3://csc7740-amazon-review/data/meta/*.jsonl.gz'; export OUTPUT_ROOT=s3://csc7740-amazon-review/results/two-workers; export RUN_LABEL=two-workers; export SHUFFLE_PARTITIONS=400; export WRITE_ENRICHED=0; bash /tmp/run_emr.sh'
+INFO Environment:
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/opt/aws/puppet/bin/:/opt/puppetlabs/bin
+  INVOCATION_ID=8ef4d76faa0d4e7d8839bff3e2863d88
+  SECURITY_PROPERTIES=/emr/instance-controller/lib/security.properties
+  HISTCONTROL=ignoredups
+  MANPATH=:/opt/puppetlabs/puppet/share/man
+  PIDFILE=/emr/instance-controller/run/instance-controller.pid
+  HISTSIZE=1000
+  HADOOP_ROOT_LOGGER=INFO,DRFA
+  AWS_DEFAULT_REGION=us-east-1
+  JAVA_HOME=/etc/alternatives/jre
+  BASH_FUNC_which%%=() {  ( alias; eval ${which_declare} ) | /usr/bin/which --tty-only --read-alias --read-functions --show-tilde --show-dot "$@"}
+  LANG=en_US.UTF-8
+  JOURNAL_STREAM=8:2037035
+  MAIL=/var/spool/mail/hadoop
+  PLATFORM_TYPE=EMR_ON_EC2
+  which_declare=declare -f
+  LOGNAME=hadoop
+  PWD=/
+  HADOOP_CLIENT_OPTS=-Djava.io.tmpdir=/mnt/var/lib/hadoop/steps/s-09163011V7YC948GL1IZ/tmp
+  _=/usr/lib/jvm/jre-17/bin/java
+  S_COLORS=auto
+  LESSOPEN=||/usr/bin/lesspipe.sh %s
+  SHELL=/bin/bash
+  JOB_IDENTIFIER=j-05114253MUVDJMJSM0Y5/s-09163011V7YC948GL1IZ
+  USER=hadoop
+  GEM_HOME=/home/hadoop/.local/share/gem/ruby
+  HADOOP_LOGFILE=syslog
+  SYSTEMD_COLORS=false
+  HOSTNAME=ip-172-31-44-198.ec2.internal
+  HADOOP_LOG_DIR=/mnt/var/log/hadoop/steps/s-09163011V7YC948GL1IZ
+  SYSTEMD_EXEC_PID=79049
+  EMR_STEP_ID=s-09163011V7YC948GL1IZ
+  SHLVL=0
+  HOME=/home/hadoop
+  HADOOP_IDENT_STRING=hadoop
+INFO redirectOutput to /mnt/var/log/hadoop/steps/s-09163011V7YC948GL1IZ/stdout
+INFO redirectError to /mnt/var/log/hadoop/steps/s-09163011V7YC948GL1IZ/stderr
+INFO Working dir /mnt/var/lib/hadoop/steps/s-09163011V7YC948GL1IZ
+INFO ProcessRunner started child process 187020
+2026-10-08T22:00:32.872030432Z INFO HadoopJarStepRunner.Runner: startRun() called for s-09163011V7YC948GL1IZ Child Pid: 187020
+INFO Synchronously wait child process to complete : hadoop jar /var/lib/aws/emr/step-runner/hadoop-...
+INFO Process 187020 still running
+INFO Process 187020 still running
+INFO Process 187020 still running
+INFO Process 187020 still running
+INFO Process 187020 still running
+INFO Process 187020 still running
+INFO waitProcessCompletion ended with exit code 0 : hadoop jar /var/lib/aws/emr/step-runner/hadoop-...
+INFO total process run time: 6046 seconds
+2026-10-08T23:41:19.274203220Z INFO Step created jobs: 
+2026-10-08T23:41:19.274363581Z INFO Step succeeded with exitCode 0 and took 6046 seconds

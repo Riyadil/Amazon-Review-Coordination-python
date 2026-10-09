@@ -1,0 +1,92 @@
+Completed 4.0 KiB/4.0 KiB (66.6 KiB/s) with 1 file(s) remainingdownload: s3://csc7740-amazon-review/project/run_emr.sh to ../../../../../../tmp/run_emr.sh
+Completed 25.1 KiB/25.1 KiB (362.4 KiB/s) with 1 file(s) remainingdownload: s3://csc7740-amazon-review/project/AmazonReviewCoordinationDF.py to ../../../../../../tmp/AmazonReviewCoordinationDF.py
+using fs.defaultFS=hdfs://ip-172-31-44-198.ec2.internal:8020
+  rewriting host-less URI: spark.history.fs.logDirectory
+using checkpoint dir=hdfs://ip-172-31-44-198.ec2.internal:8020/user/hadoop/amazon-review-checkpoints/two-workers
+:: loading settings :: url = jar:file:/usr/lib/spark/jars/ivy-2.5.1.jar!/org/apache/ivy/core/settings/ivysettings.xml
+
+======================================================================
+Amazon Review Coordination - DataFrame pipeline
+======================================================================
+Reviews : s3://csc7740-amazon-review/data/reviews/*.jsonl.gz
+Metadata: s3://csc7740-amazon-review/data/meta/*.jsonl.gz
+Output  : s3://csc7740-amazon-review/results/two-workers
+Master  : yarn   driver memory: 4g
+
+======================================================================
+Stage timings
+======================================================================
+  enrich + join                    64.8s
+Enriched reviews: 24447530
+  write enriched parquet        skipped
+  candidate groups                105.4s
+Candidate groups: 20640171
+  repeated pairs (self-join)       26.1s
+Repeated user pairs: 1051
+  pair audit                        1.6s
+Flagged as possible same-account artefacts: 28
+Dropped before graph construction: 13; pairs remaining: 1038
++------------------------------+------------------------------------+---------------+-----------------+
+|user1                         |user2                               |repeated_groups|same_base_account|
++------------------------------+------------------------------------+---------------+-----------------+
+|AHPG65LKS3QKRWDUWAKZNLEK5RZQ  |AHPG65LKS3QKRWDUWAKZNLEK5RZQ_1      |464            |true             |
+|AHZGQXTGR3WB6CQR3PP2TB2YPTUA  |AHZGQXTGR3WB6CQR3PP2TB2YPTUA_2      |246            |true             |
+|AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ  |AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ_2_2_1  |224            |true             |
+|AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ  |AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ_2_2_2_1|220            |true             |
+|AEVFWS7JFEKHYDZKH4SI5YDSNGJQ  |AEVFWS7JFEKHYDZKH4SI5YDSNGJQ_1      |217            |true             |
+|AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ  |AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ_1      |176            |true             |
+|AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ  |AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ_2_1    |175            |true             |
+|AHZGQXTGR3WB6CQR3PP2TB2YPTUA  |AHZGQXTGR3WB6CQR3PP2TB2YPTUA_1      |173            |true             |
+|AFKZESU3PTCQ2UVDBDSFVFTXBFNQ_1|AFKZESU3PTCQ2UVDBDSFVFTXBFNQ_2      |94             |true             |
+|AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ  |AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ_2_2_2_2|80             |true             |
++------------------------------+------------------------------------+---------------+-----------------+
+only showing top 10 rows
+
+  components computed with GraphFrames
+  connected components              5.6s
+Graph vertices: 1294   components: 443
+  MinHash text similarity         175.8s
+  component stats + score        5359.3s
+  write results                    56.8s
+  write suspicious reviews         98.3s
+
+======================================================================
+Top 20 coordination groups
+======================================================================
++-------------+-----+-----+-------+--------------------+-----------------+--------------------+------------------+-------------------+-------------+------------------+
+|component_id |users|edges|reviews|density             |avg_repetition   |time_concentration  |rating_agreement  |avg_text_similarity|similar_pairs|coordination_score|
++-------------+-----+-----+-------+--------------------+-----------------+--------------------+------------------+-------------------+-------------+------------------+
+|1151051235328|2    |1    |64     |1.0                 |11.0             |0.125               |0.629150390625    |1.0                |1            |0.6491547851562499|
+|438086664193 |2    |1    |19     |1.0                 |5.0              |0.7368421052631579  |0.9501385041551246|1.0                |13           |0.6448282548476454|
+|1322849927169|2    |1    |18     |1.0                 |9.0              |0.2222222222222222  |0.7777777777777777|1.0                |11           |0.6377777777777778|
+|206158430209 |2    |1    |18     |1.0                 |9.0              |1.0                 |1.0               |0.0                |0            |0.5933333333333333|
+|111669149697 |2    |1    |10     |1.0                 |4.0              |0.4                 |1.0               |1.0                |3            |0.576             |
+|807453851649 |2    |1    |34     |1.0                 |11.0             |0.23529411764705882 |0.5553633217993079|0.0                |0            |0.5585709342560553|
+|360777252867 |3    |3    |37     |1.0                 |9.333333333333334|0.24324324324324326 |0.5288531775018261|0.0                |0            |0.554218407596786 |
+|1546188226560|2    |1    |19     |1.0                 |9.0              |0.5263157894736842  |0.9002770083102494|0.0                |0            |0.531551246537396 |
+|2637109919748|2    |1    |18     |1.0                 |8.0              |0.5                 |1.0               |0.0                |0            |0.5308888888888889|
+|2680059592706|2    |1    |7      |1.0                 |3.0              |1.0                 |0.6326530612244898|0.0                |0            |0.521795918367347 |
+|1640677507075|2    |1    |18     |1.0                 |4.0              |0.6666666666666666  |0.5987654320987654|0.0                |0            |0.5105555555555555|
+|1374389534722|2    |1    |46     |1.0                 |11.0             |0.17391304347826086 |0.989366729678639 |0.0                |0            |0.5084560491493384|
+|395136991234 |2    |1    |6      |1.0                 |3.0              |1.0                 |1.0               |0.0                |0            |0.507             |
+|463856467969 |2    |1    |10     |1.0                 |3.0              |0.5                 |1.0               |0.0                |0            |0.507             |
+|8589934592   |2    |1    |42     |1.0                 |4.0              |0.8571428571428571  |0.9659863945578232|0.0                |0            |0.5057482993197279|
+|721554505728 |2    |1    |7      |1.0                 |3.0              |0.8571428571428571  |0.8163265306122449|0.0                |0            |0.5047551020408163|
+|17179869185  |223  |331  |33694  |0.013372116511129965|4.069486404833837|6.232563661185968E-4|0.7925949201386753|0.9943310657596371 |4            |0.504526856033526 |
+|77309411329  |2    |1    |16     |1.0                 |6.0              |0.4375              |0.53125           |0.0                |0            |0.5044375         |
+|2353642078209|2    |1    |6      |1.0                 |3.0              |1.0                 |1.0               |0.0                |0            |0.5036666666666666|
+|2173253451776|2    |1    |28     |1.0                 |8.0              |0.2857142857142857  |0.569515306122449 |0.0                |0            |0.5003992346938775|
++-------------+-----+-----+-------+--------------------+-----------------+--------------------+------------------+-------------------+-------------+------------------+
+only showing top 20 rows
+
+
+======================================================================
+PIPELINE COMPLETED SUCCESSFULLY
+======================================================================
+Reviews processed : 24447530
+Candidate groups  : 20640171
+Repeated pairs    : 1038
+Graph vertices    : 1294
+Components        : 443
+Flagged pairs     : 13 (dropped before the graph)
+Total runtime     : 6030.4 seconds
