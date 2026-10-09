@@ -23,3 +23,14 @@ venv/
 .DS_Store
 logs
 aws/MY_KEY.pem
+
+# LaTeX build artifacts - the .tex and .pdf are tracked, intermediates are not
+*.aux
+*.toc
+*.out
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+report/*.log

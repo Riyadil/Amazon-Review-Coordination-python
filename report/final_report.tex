@@ -222,8 +222,6 @@ the input corpus and the results, decoupling storage from the ephemeral
 cluster, and Parquet is the output format because the results are read back
 column-wise for analysis.
 
-\subsection{Chosen Datasets}
-
 \subsection{Architecture Overview}
 
 \begin{center}
@@ -245,6 +243,8 @@ two core nodes execute distributed tasks; S3 provides shared input, output,
 code, and log storage.
 \end{minipage}}
 \end{center}
+
+\subsection{Chosen Datasets}
 
 We use the \textbf{Amazon Reviews'23} corpus released by the McAuley Lab at UC
 San Diego (\url{https://amazon-reviews-2023.github.io/}). We selected four
@@ -604,16 +604,31 @@ on the single-node baseline and on both EMR cluster configurations:
 \end{center}
 
 That three separate executions on different hardware and different cluster
-topologies agree exactly on all eight figures is the strongest correctness
-evidence we have: the pipeline is deterministic, and the fixed MinHash seed
-holds.
+topologies agree exactly on all eight figures is strong correctness evidence:
+ingest, grouping, pair generation and community detection are deterministic.
+
+One stage is not, and it is worth stating plainly. MinHash text similarity is
+an \emph{approximate} join: \texttt{approxSimilarityJoin} prunes candidates by
+LSH bucket, and which candidates survive depends on how rows are physically
+partitioned. The fixed seed pins the hash functions, not the partitioning, so
+the two cluster topologies disagree on the similarity counts. The one-worker
+run reports 34 similar review pairs across six components; the two-worker run
+reports 32 across five; 58 components differ in their \texttt{similar\_pairs}
+value. The effect on the ranking is nil --- the top five coordination scores
+are identical to four decimal places in both runs, because a pair that drops
+out carries the same similarity as the mean it contributes to. We report this
+rather than suppress it: it is a real property of approximate LSH under
+repartitioning, and anyone reproducing this work on a differently shaped
+cluster should expect it.
 
 \textbf{Interpretation.} The final graph contains 1{,}294 accounts from a
 corpus of 24.4 million reviews, so the detector is selective rather than
 flagging ordinary activity at scale. Of the 443 components, 367 (82.8\%) are
 two-account groups, 76 have at least three accounts, and only four have ten or
-more. Text reuse is also uncommon: six components contain any cross-account
-near-duplicate text, representing 34 similar review pairs in total.
+more. Text reuse is also uncommon: in the one-worker run six components
+contain cross-account near-duplicate text, representing 34 similar review
+pairs in total (32 across five components in the two-worker run, for the
+reason given above).
 
 The highest-scoring group (component \texttt{1151051235328}, score 0.649)
 contains two accounts, one edge, and 64 associated reviews. The accounts
@@ -809,10 +824,51 @@ deliverable package: the step \texttt{stdout}, \texttt{stderr} and
 container logs used for the task-rate analysis, is in
 \texttt{output/emr/logs/}.
 
-\textbf{Cost.} AWS Cost Explorer reported approximately \$5.01 for the cluster
-campaign, including bring-up, debugging, and both full-corpus runs over a
-7.78-hour cluster lifetime: \$4.39 in EC2/EMR compute, \$0.45 in S3 PUT
-requests, and \$0.17 in storage and EBS.
+\textbf{Cost.} The cluster campaign --- bring-up, debugging, and both
+full-corpus runs over a 7.78-hour cluster lifetime --- cost \textbf{\$6.11}.
+These are settled charges read from AWS Cost Explorer for 8--9 October 2026,
+not estimates. The cluster terminated at 00:44 UTC on 9 October, so its final
+44 minutes fall into the second billing day.
+
+\begin{center}
+\begin{tabular}{@{}lrrr@{}}
+  \toprule
+  \textbf{Service} & \textbf{8 Oct} & \textbf{9 Oct} & \textbf{Total} \\
+  \midrule
+  EC2 compute                      & \$3.1224 & \$0.4227 & \$3.545 \\
+  Elastic MapReduce                & \$0.6240 & \$0.2466 & \$0.871 \\
+  S3 (almost all requests)         & \$1.3741 & \$0.0024 & \$1.377 \\
+  EC2-Other (EBS gp2 + gp3)        & \$0.2036 & ---      & \$0.204 \\
+  VPC (public IPv4 address)        & \$0.0814 & \$0.0111 & \$0.093 \\
+  Cost Explorer API queries        & \$0.0200 & ---      & \$0.020 \\
+  \midrule
+  \textbf{Total}                   & \textbf{\$5.4255} & \textbf{\$0.6828}
+                                   & \textbf{\$6.11} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+Two observations follow. First, compute was predictable: estimating from the
+cluster's recorded lifetime and the published on-demand rates for this
+configuration (\$0.48/hour with one core node, \$0.72/hour with two) gave
+\$4.39, against an actual \$4.42 for EC2 plus EMR --- within 1\%.
+
+Second, storage was not, and the error was instructive. We estimated \$0.45
+for S3 and were billed \$1.38, making it the second-largest line. Almost all
+of it is \texttt{Requests-Tier1} (\$1.374), not storage: the cost of issuing
+many small write requests rather than of keeping bytes. This is the
+billing-side consequence of the same property discussed above --- the
+enriched-Parquet export wrote 88{,}544 objects in a single stage. Disabling
+that export for the measured runs removed roughly 35 minutes of wall-clock
+time per run \emph{and} the request charge attached to it. The lesson is that
+small-file output on object storage is a cost problem as well as a performance
+one, and that per-request pricing is easy to overlook when reasoning about a
+job in terms of gigabytes.
+
+Two further line items we had not anticipated at all --- EBS volume-hours
+(\$0.20) and the hourly charge for the primary node's public IPv4 address
+(\$0.09) --- together exceed the entire residual storage bill. Retaining the
+10.26\,GB of inputs, results and logs in S3 costs about \$0.24 per month.
 
 \subsection{Limitations and Validity Threats}
 
@@ -829,7 +885,8 @@ accounts, so our output cannot be interpreted as a fraud verdict.
         can fall into different windows if they straddle a bucket boundary.
   \item MinHash measures lexical overlap. It can miss paraphrases and can give
         high similarity to short, formulaic reviews without establishing a
-        shared author.
+        shared author. Being an approximate join, it is also not reproducible
+        across cluster topologies, as quantified in Section 4.3.1.
   \item The seven score weights are documented but hand chosen; they rank
         evidence consistently, but are not calibrated probabilities.
   \item Sensitivity and injection experiments used Video Games only. Their
@@ -871,7 +928,7 @@ co-review graph, extracts connected components with GraphFrames, measures
 review-text similarity with MinHash LSH, and ranks 443 candidate coordinated
 groups by a seven-signal score. The pipeline ran to completion on a single
 node and in two AWS EMR cluster configurations, producing the same aggregate
-counts and ranked results in all three executions.
+counts and the same top-ranked groups in all three executions.
 
 We went beyond building the detector to measuring it. The sensitivity sweep
 shows that the co-occurrence threshold moves the result by two orders of
