@@ -801,9 +801,8 @@ executor, Run A fetched every shuffle block locally; with two executors on
 separate nodes, Run B must fetch roughly half of them across the network.
 The added parallelism and the added network cost largely cancelled within
 this stage. We state this as the probable mechanism rather than a confirmed
-one --- distinguishing it conclusively would require comparing remote-fetch
-counts in both runs' executor logs, which we have retained but not yet
-analysed.
+one; confirming it would require a separate comparison of remote-fetch counts
+across the two executor-log sets.
 
 \textbf{The fix, and why we did not apply it mid-experiment.} Persisting
 \texttt{member\_reviews} should eliminate several repeated scans and materially
