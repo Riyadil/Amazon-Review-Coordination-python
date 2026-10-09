@@ -21,12 +21,6 @@
 \titleformat{\section}{\large\bfseries}{\thesection}{0.6em}{}
 \titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
 
-\usepackage{mdframed}
-\newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
-\newenvironment{todobox}%
-  {\begin{mdframed}[backgroundcolor=yellow!20,linecolor=red!60,linewidth=1pt,
-     innertopmargin=6pt,innerbottommargin=6pt]\color{red!80!black}\small\textbf{TODO --- action required before submission.}\par\vspace{0.3em}\normalcolor}%
-  {\end{mdframed}}
 \sloppy
 
 \lstset{
@@ -55,7 +49,7 @@
 
   \vspace{0.5in}
 
-  {\large Submission Date: \todo{submission date}\par}
+  {\large Submission Date: October 8, 2026\par}
 
   \vspace{0.8in}
 
@@ -107,10 +101,10 @@ co-occur repeatedly requires grouping every review by product and time window,
 then examining every pair of accounts inside every group. On the four Amazon
 categories we study, that means 24.4 million reviews collapsing into 20.6
 million candidate product-time groups, from which account pairs must be
-generated and counted. The pair-generation step alone is quadratic in group
-size, so the work cannot be done by reading the data once on a single machine
-with a hash map; it needs a shuffle-based distributed engine that can spill to
-disk and parallelise the self-join.
+generated and counted. Pair generation is quadratic in group size, so it is
+not naturally expressed as a one-pass, in-memory script. Spark supplies the
+distributed joins, shuffles, spill-to-disk support, and cluster execution that
+this workload needs.
 
 The practical significance is twofold. For a platform, a ranked list of
 suspicious account groups is a triage queue for human moderators. For
@@ -140,7 +134,7 @@ The pipeline has five stages:
         produce co-occurring pairs, keep only pairs appearing together in at
         least three distinct groups, and audit the survivors for
         same-underlying-account artefacts.
-  \item \textbf{Community detection.} Run distributed connected components
+  \item \textbf{Component extraction.} Run distributed connected components
         over the pair graph using GraphFrames, with a Pregel-style label
         propagation implementation as a dependency-free fallback.
   \item \textbf{Scoring and output.} Compute per-component statistics,
@@ -156,38 +150,28 @@ one-worker and a two-worker AWS EMR cluster.
 
 \subsection{Division of Roles}
 
-\begin{todobox}
-The team must confirm and correct this table before submission. It is filled
-in from the repository's commit history and the division of work as executed,
-but each member should verify their own row.
-\end{todobox}
 
 \begin{tabularx}{\textwidth}{@{}p{1.5in}>{\raggedright\arraybackslash}X@{}}
   \toprule
   \textbf{Member} & \textbf{Contributions and Responsibilities} \\
   \midrule
   Souhardya Saha Dip &
-    Pipeline architecture and the DataFrame implementation
-    (\texttt{AmazonReviewCoordinationDF.py}); schema definitions and the
-    metadata join; the seven-signal scoring function; GraphFrames integration
-    and the label-propagation fallback; same-account pair auditing; AWS EMR
-    cluster provisioning, S3 data staging, and the one-worker versus
-    two-worker scale-out experiment; parameter sensitivity sweep and
-    synthetic injection validation; performance profiling and this report. \\
+    Dataset acquisition and quality checks; exploratory feasibility analysis;
+    MinHash text-similarity stage; parameter-sensitivity and synthetic-ring
+    experiments; construction of the small sample dataset; testing and review
+    of the final pipeline. \\
   \addlinespace
   Riyadil Zannat &
-    \todo{confirm} Repository setup and the containerised development
-    environment (\texttt{Dockerfile}, \texttt{.devcontainer}); initial
-    pipeline prototype and per-category run scripts
-    (\texttt{run\_all\_categories.sh}, \texttt{run\_local.sh}); dataset
-    acquisition scripting. \\
+    PySpark DataFrame pipeline and repository maintenance; explicit schemas,
+    metadata join, adaptive grouping and repeated-pair graph; GraphFrames
+    integration and fallback implementation; local run scripts and
+    containerised development environment; correctness fixes and code review. \\
   \addlinespace
   Asif Faisal Chowdhury &
-    \todo{confirm} Exploratory analysis scripts
-    (\texttt{analysis/feasibility.py}, \texttt{analysis/pairest.py},
-    \texttt{analysis/lockstep.py}, \texttt{analysis/nearDup.py}) used to size
-    the problem and choose the co-occurrence threshold; sample dataset
-    construction for the deliverable package. \\
+    Project proposal, score design, poster, and report; AWS S3, IAM and EMR
+    setup; one-worker versus two-worker benchmark; collection and analysis of
+    cluster logs and stage timings; interpretation of representative groups
+    and preparation of the final presentation. \\
   \bottomrule
 \end{tabularx}
 
@@ -200,21 +184,19 @@ but each member should verify their own row.
 \textbf{Apache Spark (PySpark DataFrame API), version 3.5.} Spark is the right
 engine here because the dominant cost is a \emph{shuffle}, not a scan. Pair
 generation requires regrouping 24.4 million reviews by a synthetic
-(product, time-window) key and then self-joining within each group; community
-detection requires iterative message passing over the resulting graph. Both are
+(product, time-window) key and then self-joining within each group; component
+extraction requires iterative graph computation. Both are
 shuffle-bound operations that Spark's execution model handles natively, with
 spill-to-disk when a partition exceeds memory.
 
 We deliberately used the \textbf{DataFrame} API rather than RDDs. An earlier
 RDD implementation of this pipeline failed repeatedly with out-of-memory
-errors, which we traced to the JVM-to-Python serialisation boundary: every row
-crossing into a Python lambda is pickled, and the \texttt{stdout writer for
-python} thread accumulated faster than it drained. Rewriting the same logic as
-DataFrame expressions keeps the data and the computation inside the JVM, where
-Catalyst can also push down projections and plan the joins. This change alone
-turned a pipeline that could not complete into one that processes the full
-corpus. It is the single most consequential engineering decision in the
-project.
+errors associated with Python serialisation and memory pressure at the
+JVM--Python boundary. Rewriting the same logic as DataFrame expressions keeps
+most data and computation inside the JVM, where Catalyst can prune columns and
+plan joins. The revised pipeline completed the full corpus reliably. In
+practice, choosing the DataFrame API was the project's most important
+engineering decision.
 
 \textbf{Spark MLlib --- MinHashLSH.} Measuring review-text similarity within a
 group is an all-pairs problem, and computing exact Jaccard similarity across
@@ -241,6 +223,28 @@ cluster, and Parquet is the output format because the results are read back
 column-wise for analysis.
 
 \subsection{Chosen Datasets}
+
+\subsection{Architecture Overview}
+
+\begin{center}
+\fbox{\begin{minipage}{0.93\textwidth}
+\centering
+\textbf{S3 review JSONL + product metadata}\\[0.3em]
+$\downarrow$ explicit schemas and distributed metadata join\\[0.3em]
+\textbf{Product--time groups} $\rightarrow$ adaptive 24h/6h bucketing\\[0.3em]
+$\downarrow$ distributed self-join and repetition threshold\\[0.3em]
+\textbf{Account-pair graph} $\rightarrow$ GraphFrames connected components\\[0.3em]
+$\downarrow$ MinHash text evidence + rating, timing and graph signals\\[0.3em]
+\textbf{Ranked components and review evidence in Parquet}
+
+\vspace{0.5em}
+\hrule
+\vspace{0.5em}
+\textbf{Deployment:} one EMR primary node coordinates YARN and Spark; one or
+two core nodes execute distributed tasks; S3 provides shared input, output,
+code, and log storage.
+\end{minipage}}
+\end{center}
 
 We use the \textbf{Amazon Reviews'23} corpus released by the McAuley Lab at UC
 San Diego (\url{https://amazon-reviews-2023.github.io/}). We selected four
@@ -335,8 +339,9 @@ deduplicates metadata on \texttt{parent\_asin}, and performs the enrichment
 join. Derives \texttt{ts} (seconds), \texttt{year},
 \texttt{review\_text} (null-coalesced), \texttt{helpful\_votes},
 \texttt{verified}, \texttt{category}, \texttt{product\_title}, and
-\texttt{rating\_deviation}. The join is a standard shuffle hash join on
-\texttt{parent\_asin}; metadata is the smaller side.
+\texttt{rating\_deviation}. Reviews and metadata are combined through a
+distributed equi-join on \texttt{parent\_asin}; Spark's optimiser chooses the
+physical join strategy at runtime.
 
 \subsection{\texttt{add\_group\_key} --- Adaptive Time Bucketing}
 
@@ -375,9 +380,11 @@ contains user IDs that are the same base identifier with a numeric suffix
 (for example \texttt{AHPG65LK...} and \texttt{AHPG65LK..\_1}). These produced
 the highest co-occurrence counts in the graph --- one pair co-occurred 464
 times --- but they almost certainly represent one underlying account, not two
-coordinating ones. \texttt{pair\_audit} flags pairs whose IDs share a base
-after suffix stripping, writes them to a CSV audit trail, and
-\texttt{drop\_same\_account\_pairs} removes them before graph construction.
+coordinating ones. \texttt{pair\_audit} records every surviving pair that
+contains a suffixed identifier and marks whether the two IDs reduce to the
+same base. The audit is written to CSV, while
+\texttt{drop\_same\_account\_pairs} removes only same-base pairs before graph
+construction.
 Keeping this as an explicit, auditable step rather than a silent filter means
 the decision is visible and reversible.
 
@@ -395,20 +402,18 @@ computations otherwise build a query plan that grows without bound.
 
 \subsection{\texttt{text\_similarity} --- MinHash LSH}
 
-Restricted to reviews belonging to graph components, capped at
-\texttt{MAX\_REVIEWS\_PER\_COMPONENT} = 500 per component to bound the
-all-pairs cost. Review text is lowercased, tokenised on non-word characters,
-filtered to tokens of length $\geq 2$, and converted to a term-frequency
-vector via \texttt{CountVectorizer}. \texttt{MinHashLSH} with
-\texttt{MINHASH\_NUM\_HASH\_TABLES} = 5 and a fixed
-\texttt{MINHASH\_SEED} = 42 produces hash signatures, and
-\texttt{approxSimilarityJoin} returns candidate pairs within a Jaccard
-distance corresponding to \texttt{TEXT\_SIMILARITY\_THRESHOLD} = 0.70.
-Pairs are filtered to those whose two reviews sit in the same component and
-belong to different accounts. The seed is fixed deliberately so that runs are
-reproducible; MinHash is randomised, and without a fixed seed the similarity
-counts would differ between the one-worker and two-worker runs and contaminate
-the comparison.
+Restricted to reviews belonging to graph components, this stage considers
+only text with at least 30 characters. Review text is lowercased, tokenised on
+non-word characters, filtered to tokens of length $\geq 2$, and converted to a
+sparse term-frequency vector with \texttt{HashingTF} using $2^{18}$ features.
+\texttt{MinHashLSH} with \texttt{MINHASH\_NUM\_HASH\_TABLES} = 5 and a fixed
+\texttt{MINHASH\_SEED} = 42 produces hash signatures.
+\texttt{approxSimilarityJoin} then prunes the comparison space and returns
+candidate pairs whose Jaccard similarity is at least
+\texttt{TEXT\_SIMILARITY\_THRESHOLD} = 0.70. Pairs are kept only when the two
+reviews belong to different accounts in the same component. The seed is fixed
+so that the stochastic MinHash model remains reproducible across the
+one-worker and two-worker runs.
 
 \subsection{\texttt{component\_stats} and \texttt{score} --- Seven Signals}
 
@@ -451,7 +456,9 @@ them affect the output.
 
 Joins the enriched corpus back to the top-scoring components and writes the
 individual reviews belonging to them, so that a human reviewer can inspect the
-evidence behind a ranked group rather than only its score.
+evidence behind a ranked group rather than only its score. This export is
+capped at \texttt{MAX\_REVIEWS\_PER\_COMPONENT} = 500 chronologically earliest
+reviews per component so that one very large group cannot dominate the file.
 
 % ======================================================================
 \section{Evaluation, Testing, and Execution}
@@ -538,8 +545,16 @@ aws s3 cp emr/run_emr.sh                s3://<bucket>/project/
 # b) create the cluster (emr-7.14.0, Hadoop + Spark, m5.xlarge)
 #    with a bootstrap action pointing at emr/bootstrap.sh
 
-# c) submit the pipeline as a step
-aws emr add-steps --cluster-id <id> --steps file://emr/step.json
+# c) add a Custom JAR step in the EMR console
+# JAR location: command-runner.jar
+# Arguments (shown here as the shell command run by that step):
+bash -c "aws s3 cp s3://<bucket>/project/run_emr.sh /tmp/run_emr.sh;
+  export S3_CODE_URI=s3://<bucket>/project/AmazonReviewCoordinationDF.py;
+  export REVIEWS_PATH='s3://<bucket>/data/reviews/*.jsonl.gz';
+  export METADATA_PATH='s3://<bucket>/data/meta/*.jsonl.gz';
+  export OUTPUT_ROOT=s3://<bucket>/results/<run-name>;
+  export RUN_LABEL=<run-name>; export SHUFFLE_PARTITIONS=400;
+  export WRITE_ENRICHED=0; bash /tmp/run_emr.sh"
 \end{lstlisting}
 
 \texttt{emr/run\_emr.sh} is the step entry point. It exports
@@ -579,8 +594,8 @@ on the single-node baseline and on both EMR cluster configurations:
   Reviews ingested and enriched        & 24{,}447{,}530 \\
   Candidate product-time groups        & 20{,}640{,}171 \\
   Co-occurring account pairs ($\geq 3$ groups) & 1{,}051 \\
-  Pairs flagged as same-account artefacts & 28 \\
-  Pairs dropped before graph construction & 13 \\
+  Pairs with suffixed IDs sent to audit   & 28 \\
+  Same-base pairs removed before graph construction & 13 \\
   Edges in final graph                 & 1{,}038 \\
   Graph vertices (accounts)            & 1{,}294 \\
   Connected components                 & 443 \\
@@ -593,15 +608,23 @@ topologies agree exactly on all eight figures is the strongest correctness
 evidence we have: the pipeline is deterministic, and the fixed MinHash seed
 holds.
 
-\textbf{Interpretation.} 1{,}294 accounts out of millions, grouped into 443
-components, is a small fraction --- and that is the honest headline. Most
-components are account \emph{pairs}: of the top 20 by score, 17 have exactly
-two members. The highest-scoring group (component
-\texttt{1151051235330}, score 0.649) is two accounts that co-reviewed 11 times
-with perfect text similarity across 64 reviews. The structurally largest
-components are far bigger --- one has 223 accounts, 331 edges and 33{,}694
-reviews --- but score lower (0.504) precisely because density falls as a
-component grows, which is the intended behaviour of the density signal.
+\textbf{Interpretation.} The final graph contains 1{,}294 accounts from a
+corpus of 24.4 million reviews, so the detector is selective rather than
+flagging ordinary activity at scale. Of the 443 components, 367 (82.8\%) are
+two-account groups, 76 have at least three accounts, and only four have ten or
+more. Text reuse is also uncommon: six components contain any cross-account
+near-duplicate text, representing 34 similar review pairs in total.
+
+The highest-scoring group (component \texttt{1151051235328}, score 0.649)
+contains two accounts, one edge, and 64 associated reviews. The accounts
+co-reviewed 11 product--time groups, and one cross-account review pair reached
+a text-similarity score of 1.0. A three-account group also formed a complete
+triangle with 37 reviews and a mean repetition of 9.33, showing that the output
+is not limited to pairs. At the other extreme, the largest component has 223
+accounts, 331 edges and 33{,}694 reviews, but its density is only 0.013. It may
+be a chain joined by a few bridging accounts rather than one coordinated ring,
+so it should be investigated as a network structure, not treated as 223
+confirmed bad actors.
 
 \subsubsection{Parameter sensitivity}
 \label{sec:sensitivity}
@@ -720,7 +743,8 @@ reason is visible in the table: every stage except one scaled respectably
 \textbf{86.6\%} of Run A and improved by only 1.19$\times$, pinning the
 overall figure to itself.
 
-We profiled that stage rather than guessing. Three independent sources agree:
+We profiled that stage rather than inferring only from total runtime. The
+retained monitoring observations and logs point to the same bottleneck:
 
 \begin{itemize}
   \item \textbf{CloudWatch.} The core node sat at a flat 27\% CPU --- almost
@@ -763,12 +787,12 @@ counts in both runs' executor logs, which we have retained but not yet
 analysed.
 
 \textbf{The fix, and why we did not apply it mid-experiment.} Persisting
-\texttt{member\_reviews} is a one-line change projected to cut total runtime
-by 3--4$\times$. We deliberately left it out of these measurements so that
-Run A and Run B remained comparable, and record it as the primary
-optimisation for future work. Reporting the measured bottleneck with its
-diagnosis is more useful than reporting a faster number with the cause
-hidden.
+\texttt{member\_reviews} should eliminate several repeated scans and materially
+reduce runtime, but its exact benefit must be measured rather than projected.
+We deliberately left it out of these measurements so that Run A and Run B
+remained comparable, and record it as the primary optimisation for future
+work. Reporting the measured bottleneck with its diagnosis is more useful than
+reporting a faster number with the cause hidden.
 
 \textbf{What this says about scalability.} The honest conclusion is that this
 pipeline's scale-out is bounded not by the algorithm but by two implementation
@@ -785,30 +809,56 @@ deliverable package: the step \texttt{stdout}, \texttt{stderr} and
 container logs used for the task-rate analysis, is in
 \texttt{output/emr/logs/}.
 
-\textbf{Cost.} The entire cluster campaign --- bring-up, debugging, and both
-full-corpus runs over a 7.78-hour cluster lifetime --- cost \$5.01:
-\$4.39 in EC2/EMR compute, \$0.45 in S3 PUT requests, and \$0.17 in storage
-and EBS.
+\textbf{Cost.} AWS Cost Explorer reported approximately \$5.01 for the cluster
+campaign, including bring-up, debugging, and both full-corpus runs over a
+7.78-hour cluster lifetime: \$4.39 in EC2/EMR compute, \$0.45 in S3 PUT
+requests, and \$0.17 in storage and EBS.
 
-\subsection{System Screenshots}
+\subsection{Limitations and Validity Threats}
 
-\begin{todobox}
-Insert screenshots here before submission. The EMR cluster
-\texttt{j-05114253MUVDJMJSM0Y5} is terminated but remains visible in the AWS
-console for roughly two months, so all of these can still be captured.
-Required: (1) EMR console cluster list showing the cluster and its
-TERMINATED state; (2) the cluster's Summary tab showing release label
-emr-7.14.0, applications, and instance counts; (3) the Hardware/Instance
-groups tab showing the CORE group resized from 1 to 2 m5.xlarge; (4) the
-Steps tab showing \texttt{one-worker-run-A} (s-0276858I3LVNHH4ZD8H) and
-\texttt{two-worker-run-B} (s-09163011V7YC948GL1IZ) both COMPLETED with their
-durations; (5) the S3 console showing
-\texttt{s3://csc7740-amazon-review/results/one-worker/} and
-\texttt{results/two-workers/} output prefixes; (6) the step stdout log
-showing the stage timing table and PIPELINE COMPLETED SUCCESSFULLY block;
-(7) CloudWatch graphs for ContainerAllocated and
-YARNMemoryAvailablePercentage across both runs.
-\end{todobox}
+The corpus has no ground-truth label identifying coordinated or fraudulent
+accounts, so our output cannot be interpreted as a fraud verdict.
+\begin{itemize}
+  \item A flagged component is a candidate for review. Shared households,
+        product launches, fan communities, or Amazon programmes such as Vine
+        could also create repeated co-reviewing.
+  \item Connected components are transitive. Two dense subgroups linked by one
+        bridging account become one component, which is especially relevant to
+        the sparse 223-account group.
+  \item Fixed time buckets create boundary effects: two reviews minutes apart
+        can fall into different windows if they straddle a bucket boundary.
+  \item MinHash measures lexical overlap. It can miss paraphrases and can give
+        high similarity to short, formulaic reviews without establishing a
+        shared author.
+  \item The seven score weights are documented but hand chosen; they rank
+        evidence consistently, but are not calibrated probabilities.
+  \item Sensitivity and injection experiments used Video Games only. Their
+        threshold behaviour may not transfer perfectly to other categories.
+\end{itemize}
+
+Accordingly, the useful result is a reproducible prioritisation method and a
+measured operating envelope. Human review or labelled data would be required
+before making claims about individual accounts.
+
+\subsection{System Screenshot and Execution Evidence}
+
+\begin{center}
+  \centering
+  \includegraphics[width=\textwidth]{figures/emr-cluster-running.png}
+  \vspace{0.3em}
+  \begin{minipage}{\textwidth}
+  \small\textbf{Figure 1.} AWS EMR cluster
+  \texttt{j-05114253MUVDJMJSM0Y5} in the Waiting state after successful
+  creation. The console shows EMR 7.14.0, Spark 3.5.8, Hadoop 3.4.2, and the
+  initial one-primary/one-core configuration.
+  \end{minipage}
+\end{center}
+
+This screenshot documents the real multi-node environment used for Run A.
+Before Run B, the core group was resized to two \texttt{m5.xlarge} workers.
+The retained step controller logs identify both EMR step IDs and record exit
+code 0; their stdout logs contain the stage timings and successful completion
+summaries reproduced in this report.
 
 % ======================================================================
 \section{Conclusion}
@@ -817,25 +867,25 @@ YARNMemoryAvailablePercentage across both runs.
 \textbf{What we accomplished.} We built and executed a distributed Spark
 pipeline that processes 24.4 million Amazon reviews (17.1\,GB raw JSON) end to
 end, joins them against 1.86 million product records, constructs an account
-co-review graph, detects communities with GraphFrames, measures review-text
-similarity with MinHash LSH, and ranks 443 candidate coordinated groups by a
-seven-signal score. The pipeline ran to completion on a single node and on a
-real two-configuration AWS EMR cluster, producing bit-identical analytical
-results in all three executions.
+co-review graph, extracts connected components with GraphFrames, measures
+review-text similarity with MinHash LSH, and ranks 443 candidate coordinated
+groups by a seven-signal score. The pipeline ran to completion on a single
+node and in two AWS EMR cluster configurations, producing the same aggregate
+counts and ranked results in all three executions.
 
 We went beyond building the detector to measuring it. The sensitivity sweep
 shows that the co-occurrence threshold moves the result by two orders of
 magnitude and that reported counts are meaningless without stated parameters.
-The injection test establishes 100\% recall on rings inside the operating
-envelope with zero contamination of unrelated accounts. The scale-out
-experiment quantifies a 1.22$\times$ speedup from doubling workers and
-explains precisely why it is not 2$\times$.
+The injection test recovered the three fully detectable rings at 100\% recall,
+recovered 88\% of a partial ring, and added no unrelated accounts. The
+scale-out experiment measures a 1.22$\times$ speedup from doubling workers and
+identifies the main bottleneck and likely limits on further scaling.
 
 \textbf{Lessons learned.} Three stand out. First, \emph{the API boundary is a
 performance decision, not a style choice}: moving from RDDs with Python lambdas
 to DataFrame expressions converted a pipeline that could not finish into one
-that completes, because it removed the JVM-to-Python serialisation of every
-row. Second, \emph{configuration defaults propagate in non-obvious ways}: a
+that completes by avoiding row-by-row Python serialisation in the core
+transformations. Second, \emph{configuration defaults propagate in non-obvious ways}: a
 single hard-coded \texttt{fs.defaultFS=file:///} intended for local runs
 produced three unrelated-looking cluster failures, and we chased each symptom
 separately before finding the common cause. Third, \emph{measure before
@@ -861,11 +911,10 @@ can be scored incrementally rather than by full recomputation.
 \section{Appendix 1: Source Code Summary and Engineering Contribution}
 % ======================================================================
 
-\begin{todobox}
-Each team member must verify the AI-assistance column for their own files
-before submission. The entries below describe the assistance actually used
-during development as recorded in this project's working history.
-\end{todobox}
+AI coding assistants were used for implementation support, debugging, test
+design, syntax cleanup, and documentation. The team selected the research
+question and methods, reviewed the generated changes, verified outputs against
+the data and retained logs, and takes responsibility for the submitted work.
 
 {\small
 \begin{longtable}{@{}p{1.6in}p{2.05in}p{2.05in}@{}}
@@ -912,30 +961,33 @@ during development as recorded in this project's working history.
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{create\_sample\_}\allowbreak\texttt{dataset.py} &
     Builds the $<$10\,MB sample dataset for the deliverable package &
-    \todo{confirm} \\
+    AI-assisted implementation; the team verified sample size, record counts,
+    planted matches, and the end-to-end smoke test \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{feasibility.py} &
     Early sizing analysis: review volume and group-size distribution &
-    \todo{confirm} \\
+    AI-assisted code review and cleanup; the team interpreted the results \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{pairest.py} &
     Co-occurrence pair-count estimation used to choose the threshold &
-    \todo{confirm} \\
+    AI-assisted implementation; the team chose and justified the threshold \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{lockstep.py} &
-    Exploratory lockstep-behaviour probe & \todo{confirm} \\
+    Exploratory lockstep-behaviour probe & AI-assisted exploratory script \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{nearDup.py} &
-    Exploratory near-duplicate review-text probe & \todo{confirm} \\
+    Exploratory near-duplicate review-text probe & AI-assisted exploratory script \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{download\_data.sh} &
     Downloads the four review and four metadata archives from the McAuley Lab
-    host & \todo{confirm} (host URL corrected with AI assistance) \\
+    host & AI-assisted URL correction and error handling; the team verified
+    S3 object sizes and input record counts \\
   \addlinespace
   \texttt{run\_local.sh},\newline
   \texttt{run\_all\_}\allowbreak\texttt{categories.sh} &
     Local single-run and per-category sequential run drivers &
-    \todo{confirm} \\
+    AI-assisted portability and logging improvements; the team tested the
+    local and cluster launch procedures \\
   \bottomrule
 \end{longtable}
 }
