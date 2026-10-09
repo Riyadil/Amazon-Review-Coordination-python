@@ -606,21 +606,24 @@ on the single-node baseline and on both EMR cluster configurations:
 
 That three separate executions on different hardware and different cluster
 topologies agree exactly on all eight figures is strong correctness evidence:
-ingest, grouping, pair generation and community detection are deterministic.
+ingest, grouping, pair generation and component extraction are deterministic.
 
-One stage is not, and it is worth stating plainly. MinHash text similarity is
-an \emph{approximate} join: \texttt{approxSimilarityJoin} prunes candidates by
-LSH bucket, and which candidates survive depends on how rows are physically
-partitioned. The fixed seed pins the hash functions, not the partitioning, so
-the two cluster topologies disagree on the similarity counts. The one-worker
-run reports 34 similar review pairs across six components; the two-worker run
-reports 32 across five; 58 components differ in their \texttt{similar\_pairs}
-value. The effect on the ranking is nil --- the top five coordination scores
-are identical to four decimal places in both runs, because a pair that drops
-out carries the same similarity as the mean it contributes to. We report this
-rather than suppress it: it is a real property of approximate LSH under
-repartitioning, and anyone reproducing this work on a differently shaped
-cluster should expect it.
+The MinHash text-similarity stage showed a small topology-dependent difference.
+The one-worker run reports 34 similar review pairs across six components; the
+two-worker run reports 32 across five. A direct comparison of the saved
+component outputs found that only four of the 443 components differed in
+\texttt{similar\_pairs}, and only two coordination scores changed. One affected
+component moved from rank 11 to 335 when its only text match disappeared; the
+other moved from rank 19 to 17. The top five component IDs were unchanged.
+
+The most likely cause is the generated document identifier used before the
+MinHash self-join. The pipeline assigns this identifier with
+\texttt{monotonically\_increasing\_id()}, whose values depend on DataFrame
+partitioning. Changing the worker count can therefore change which review is
+retained when candidate pairs are deduplicated, even though the MinHash seed is
+fixed. This does not affect the graph itself, but it can affect the auxiliary
+text signal. A future revision should derive a stable identifier from review
+fields instead of using a partition-dependent ID.
 
 \textbf{Interpretation.} The final graph contains 1{,}294 accounts from a
 corpus of 24.4 million reviews, so the detector is selective rather than
@@ -854,17 +857,16 @@ cluster's recorded lifetime and the published on-demand rates for this
 configuration (\$0.48/hour with one core node, \$0.72/hour with two) gave
 \$4.39, against an actual \$4.42 for EC2 plus EMR --- within 1\%.
 
-Second, storage was not, and the error was instructive. We estimated \$0.45
-for S3 and were billed \$1.38, making it the second-largest line. Almost all
-of it is \texttt{Requests-Tier1} (\$1.374), not storage: the cost of issuing
-many small write requests rather than of keeping bytes. This is the
-billing-side consequence of the same property discussed above --- the
-enriched-Parquet export wrote 88{,}544 objects in a single stage. Disabling
-that export for the measured runs removed roughly 35 minutes of wall-clock
-time per run \emph{and} the request charge attached to it. The lesson is that
-small-file output on object storage is a cost problem as well as a performance
-one, and that per-request pricing is easy to overlook when reasoning about a
-job in terms of gigabytes.
+Second, storage-related cost was less predictable. We estimated \$0.45 for S3
+and were billed \$1.38, making it the second-largest line. Almost all of it is
+\texttt{Requests-Tier1} (\$1.374), which is consistent with a workload that
+issues many small object requests rather than simply storing a large number of
+bytes. Both controlled cluster runs used \texttt{WRITE\_ENRICHED=0}, so the
+retained evidence does not support assigning a precise object count or runtime
+saving to the enriched-Parquet export. The broader lesson remains that
+small-file output on object storage can be a cost problem as well as a
+performance problem, and per-request pricing is easy to overlook when
+reasoning about a job mainly in terms of gigabytes.
 
 Two further line items we had not anticipated at all --- EBS volume-hours
 (\$0.20) and the hourly charge for the primary node's public IPv4 address
@@ -1012,10 +1014,13 @@ can be scored incrementally rather than by full recomputation.
 \section{Appendix 1: Source Code Summary and Engineering Contribution}
 % ======================================================================
 
-AI coding assistants were used for implementation support, debugging, test
-design, syntax cleanup, and documentation. The team selected the research
-question and methods, reviewed the generated changes, verified outputs against
-the data and retained logs, and takes responsibility for the submitted work.
+AI coding assistants were used as supporting tools throughout the project. They
+helped the team brainstorm implementation options, improve and organize written
+explanations, restructure code for readability, explain error messages, and
+suggest comments and test cases. The team chose the topic, pipeline design,
+thresholds, scoring method, and experiments; reviewed and adapted suggestions;
+ran the analyses; and verified the reported outputs against the data and
+retained logs. The team takes responsibility for the submitted work.
 
 {\small
 \begin{longtable}{@{}p{1.6in}p{2.05in}p{2.05in}@{}}
@@ -1029,66 +1034,75 @@ the data and retained logs, and takes responsibility for the submitted work.
     join, adaptive time bucketing, co-occurrence self-join, GraphFrames
     connected components with label-propagation fallback, MinHash LSH text
     similarity, seven-signal scoring, same-account pair auditing &
-    Extensive. Full DataFrame rewrite of an earlier RDD implementation was
-    AI-assisted from a functional specification; schemas, scoring weights,
-    pair-audit logic and the \texttt{WRITE\_ENRICHED} /
-    \texttt{fs.defaultFS} fixes were AI-authored and human-reviewed \\
+    AI helped brainstorm the DataFrame organization, improve readability and
+    comments, and diagnose implementation errors. The team selected the
+    schemas, thresholds, scoring weights and audit logic, reviewed and adapted
+    suggestions, and validated the pipeline outputs \\
   \addlinespace
   \texttt{emr/run\_emr.sh} &
     EMR step entry point: resolves the cluster's real \texttt{fs.defaultFS},
     pins staging / event-log / warehouse / checkpoint URIs to fully-qualified
     \texttt{hdfs://host:port}, creates the checkpoint directory, invokes
     \texttt{spark-submit} with GraphFrames &
-    AI-authored during cluster debugging; each configuration fix derived from
-    a specific observed failure \\
+    AI assisted with interpreting cluster errors and organizing possible
+    fixes. The team applied each configuration change, reran the jobs, and
+    verified the results from EMR and S3 evidence \\
   \addlinespace
   \texttt{emr/bootstrap.sh} &
     EMR bootstrap action installing NumPy, setuptools and GraphFrames on all
-    nodes & AI-authored \\
+    nodes & AI helped organize the shell commands and package setup; the team
+    tested the bootstrap action on the cluster \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{sensitivity.py} &
     Time-window $\times$ co-occurrence-threshold parameter sweep, emitting
     pairs / accounts / components / largest-component per cell &
-    AI-authored from a described experiment design \\
+    AI helped organize the experiment code and output table; the team designed
+    the parameter sweep, ran it, and interpreted the results \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{injection.py} &
     Synthetic coordination-ring injection and recall measurement, including
     foreign-account contamination check &
-    AI-authored from a described experiment design \\
+    AI helped organize the test code; the team defined the injection scenario,
+    ran the experiment, and checked recall and contamination \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{count\_spark\_}\allowbreak\texttt{operations.py} &
     AST-based static counter of Spark call sites for Appendix 2 &
-    AI-authored \\
+    AI helped structure the utility and improve its documentation; the team
+    checked the counted operations against the submitted source \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{create\_sample\_}\allowbreak\texttt{dataset.py} &
     Builds the $<$10\,MB sample dataset for the deliverable package &
-    AI-assisted implementation; the team verified sample size, record counts,
-    planted matches, and the end-to-end smoke test \\
+    AI helped organize the sampling and validation logic; the team verified
+    sample size, record counts, planted matches, and the end-to-end smoke test \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{feasibility.py} &
     Early sizing analysis: review volume and group-size distribution &
-    AI-assisted code review and cleanup; the team interpreted the results \\
+    AI helped clean up and document the script; the team ran the analysis and
+    interpreted the results \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{pairest.py} &
     Co-occurrence pair-count estimation used to choose the threshold &
-    AI-assisted implementation; the team chose and justified the threshold \\
+    AI helped organize the estimation code; the team chose and justified the
+    threshold from the resulting counts \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{lockstep.py} &
-    Exploratory lockstep-behaviour probe & AI-assisted exploratory script \\
+    Exploratory lockstep-behaviour probe & AI helped organize the exploratory
+    code; the team defined the question and interpreted the output \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{nearDup.py} &
-    Exploratory near-duplicate review-text probe & AI-assisted exploratory script \\
+    Exploratory near-duplicate review-text probe & AI helped organize the
+    exploratory code; the team defined the question and interpreted the output \\
   \addlinespace
   \texttt{analysis/}\allowbreak\texttt{download\_data.sh} &
     Downloads the four review and four metadata archives from the McAuley Lab
-    host & AI-assisted URL correction and error handling; the team verified
-    S3 object sizes and input record counts \\
+    host & AI helped diagnose URL errors and improve error handling; the team
+    verified S3 object sizes and input record counts \\
   \addlinespace
   \texttt{run\_local.sh},\newline
   \texttt{run\_all\_}\allowbreak\texttt{categories.sh} &
     Local single-run and per-category sequential run drivers &
-    AI-assisted portability and logging improvements; the team tested the
-    local and cluster launch procedures \\
+    AI suggested portability, organization and logging improvements; the team
+    reviewed the changes and tested the local and cluster launch procedures \\
   \bottomrule
 \end{longtable}
 }
