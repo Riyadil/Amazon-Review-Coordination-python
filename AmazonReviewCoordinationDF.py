@@ -49,6 +49,12 @@ GRAPHFRAMES_PACKAGE = os.environ.get(
 CHECKPOINT_DIR = os.environ.get(
     "CHECKPOINT_DIR", "/tmp/amazon-review-coordination-checkpoint")
 
+# Dumping all 24M enriched reviews back out, partitioned by category and year,
+# is a side artefact rather than part of the detection. It dominates the
+# runtime and produces tens of thousands of small files, so a run that only
+# needs the coordination results can switch it off.
+WRITE_ENRICHED = os.environ.get("WRITE_ENRICHED", "1") == "1"
+
 TIME_BUCKET_HOURS = 24
 LARGE_GROUP_THRESHOLD = 100
 LARGE_GROUP_BUCKET_HOURS = 6
@@ -487,8 +493,12 @@ def main():
         .config("spark.driver.memory", DRIVER_MEMORY)
         .config("spark.sql.shuffle.partitions", SHUFFLE_PARTITIONS)
         .config("spark.sql.caseSensitive", "true")
-        .config("spark.hadoop.fs.defaultFS", "file:///")
     )
+    if MASTER.startswith("local"):
+        # Keep a local run off any Hadoop configuration that happens to be
+        # installed on the machine. On a cluster the real fs.defaultFS has to
+        # win instead, or every scheme-less path resolves to the local disk.
+        builder = builder.config("spark.hadoop.fs.defaultFS", "file:///")
     if USE_GRAPHFRAMES:
         builder = (builder
                    .config("spark.jars.packages", GRAPHFRAMES_PACKAGE)
@@ -517,9 +527,12 @@ def main():
     n_reviews = step("enrich + join", lambda: enriched.count())
     print("Enriched reviews: %d" % n_reviews)
 
-    step("write enriched parquet",
-         lambda: enriched.write.mode("overwrite").partitionBy("category", "year")
-                 .parquet(OUTPUT_ROOT + "/amazon_output"))
+    if WRITE_ENRICHED:
+        step("write enriched parquet",
+             lambda: enriched.write.mode("overwrite").partitionBy("category", "year")
+                     .parquet(OUTPUT_ROOT + "/amazon_output"))
+    else:
+        print("  %-28s %8s" % ("write enriched parquet", "skipped"))
 
     grouped = add_group_key(enriched).select("group_key", "user_id").distinct().cache()
     n_groups = step("candidate groups", lambda: grouped.select("group_key").distinct().count())

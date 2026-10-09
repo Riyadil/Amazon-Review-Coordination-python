@@ -22,3 +22,4 @@ venv/
 # OS
 .DS_Store
 logs
+aws/MY_KEY.pem
