@@ -10,6 +10,7 @@
 \usepackage{tabularx}
 \usepackage{longtable}
 \usepackage{graphicx}
+\usepackage{float}
 \usepackage{listings}
 \usepackage[hidelinks]{hyperref}
 \usepackage{titlesec}
@@ -897,25 +898,68 @@ Accordingly, the useful result is a reproducible prioritisation method and a
 measured operating envelope. Human review or labelled data would be required
 before making claims about individual accounts.
 
-\subsection{System Screenshot and Execution Evidence}
+\subsection{System Screenshots and Execution Evidence}
 
-\begin{center}
+\begin{figure}[htbp]
   \centering
   \includegraphics[width=\textwidth]{figures/emr-cluster-running.png}
-  \vspace{0.3em}
-  \begin{minipage}{\textwidth}
-  \small\textbf{Figure 1.} AWS EMR cluster
-  \texttt{j-05114253MUVDJMJSM0Y5} in the Waiting state after successful
-  creation. The console shows EMR 7.14.0, Spark 3.5.8, Hadoop 3.4.2, and the
-  initial one-primary/one-core configuration.
-  \end{minipage}
-\end{center}
+  \caption{The EMR cluster in the \emph{Waiting} state during the campaign,
+  showing release emr-7.14.0 with Hadoop and Spark installed and the initial
+  one-primary / one-core configuration used for Run A.}
+  \label{fig:cluster}
+\end{figure}
 
-This screenshot documents the real multi-node environment used for Run A.
-Before Run B, the core group was resized to two \texttt{m5.xlarge} workers.
-The retained step controller logs identify both EMR step IDs and record exit
-code 0; their stdout logs contain the stage timings and successful completion
-summaries reproduced in this report.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/emr-steps-completed.png}
+  \caption{The cluster's Steps tab. Both full-corpus runs are
+  \textbf{Completed}: \texttt{one-worker-run-A} (YARN application
+  \texttt{\ldots\_0010}) with an elapsed time of 2 hours 3 minutes, and
+  \texttt{two-worker-run-B} (\texttt{\ldots\_0011}) at 1 hour 40 minutes.
+  These console-reported durations correspond to the 7{,}368.6\,s and
+  6{,}030.4\,s totals in Section~\ref{sec:scaleout}, the small difference
+  being Spark start-up outside the pipeline's own timer. The step count of
+  seven includes the failed configuration attempts described in
+  Section~4.1.}
+  \label{fig:steps}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/emr-hardware-two-core.png}
+  \caption{Cluster summary and instance groups after the campaign. Capacity
+  reads \textbf{1 Primary, 2 Core}, and the Core group lists two separate
+  \texttt{m5.xlarge} instances, confirming the resize performed between Run A
+  and Run B. The summary also records the 7 hour 47 minute cluster lifetime
+  and the \$0.192/hour on-demand rate and 64\,GiB EBS allocation per node
+  that underpin the cost analysis.}
+  \label{fig:hardware}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{figures/s3-results-prefixes.png}
+  \caption{The \texttt{results/} prefix in Amazon S3 containing the
+  \texttt{one-worker/} and \texttt{two-workers/} output sets written by the
+  two runs.}
+  \label{fig:s3}
+\end{figure}
+
+\clearpage
+
+Together these document a real multi-node cloud execution rather than a local
+simulation. Figure~\ref{fig:cluster} establishes the software stack and the
+single-worker starting configuration; Figure~\ref{fig:steps} is the primary
+execution evidence, showing both full-corpus runs reaching \emph{Completed}
+with durations that independently corroborate the scale-out measurement;
+Figure~\ref{fig:hardware} confirms that the core group really did grow from
+one node to two, which is the only variable that changed between the runs; and
+Figure~\ref{fig:s3} shows the resulting output sets in object storage.
+
+The retained step \texttt{controller} logs record exit code 0 for both steps,
+and their \texttt{stdout} logs contain the stage timings and the
+\texttt{PIPELINE COMPLETED SUCCESSFULLY} summaries reproduced in
+Section~\ref{sec:scaleout}. Both are included in the deliverable package.
 
 % ======================================================================
 \section{Conclusion}
