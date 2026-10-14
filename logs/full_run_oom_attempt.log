@@ -1,0 +1,101 @@
+26/10/06 15:04:26 WARN Utils: Your hostname, CSE2327PCAA resolves to a loopback address: 127.0.1.1; using 96.125.119.93 instead (on interface eno1)
+26/10/06 15:04:26 WARN Utils: Set SPARK_LOCAL_IP if you need to bind to another address
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+26/10/06 15:04:27 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+/home/researchuser2/venvs/project/lib/python3.12/site-packages/pyspark/sql/context.py:113: FutureWarning: Deprecated in 3.0.0. Use SparkSession.builder.getOrCreate() instead.
+  warnings.warn(
+[Stage 0:>                                                          (0 + 4) / 4][Stage 0:==============>                                            (1 + 3) / 4][Stage 0:=============================>                             (2 + 2) / 4][Stage 0:============================================>              (3 + 1) / 4]                                                                                [Stage 3:>                                                          (0 + 4) / 4][Stage 3:==============>                                            (1 + 3) / 4][Stage 3:=============================>                             (2 + 2) / 4][Stage 3:============================================>              (3 + 1) / 4]                                                                                [Stage 6:>                                                          (0 + 4) / 4][Stage 6:>                                                          (0 + 4) / 4][Stage 6:>                                                          (0 + 4) / 4]26/10/06 15:07:21 WARN MemoryStore: Not enough space to cache rdd_19_1 in memory! (computed 1230.1 MiB so far)
+26/10/06 15:07:21 WARN BlockManager: Persisting block rdd_19_1 to disk instead.
+[Stage 6:==============>                                            (1 + 3) / 4]26/10/06 15:07:55 ERROR Utils: Uncaught exception in thread stdout writer for /home/researchuser2/venvs/project/bin/python
+java.lang.OutOfMemoryError: Java heap space
+	at java.base/java.util.Arrays.copyOf(Arrays.java:3745)
+	at java.base/java.io.ByteArrayOutputStream.grow(ByteArrayOutputStream.java:120)
+	at java.base/java.io.ByteArrayOutputStream.ensureCapacity(ByteArrayOutputStream.java:95)
+	at java.base/java.io.ByteArrayOutputStream.write(ByteArrayOutputStream.java:156)
+	at java.base/java.io.OutputStream.write(OutputStream.java:122)
+	at net.razorvine.pickle.Pickler.put_string(Pickler.java:701)
+	at net.razorvine.pickle.Pickler.dispatch(Pickler.java:304)
+	at net.razorvine.pickle.Pickler.save(Pickler.java:185)
+	at org.apache.spark.sql.execution.python.EvaluatePython$RowPickler.pickle(EvaluatePython.scala:272)
+	at net.razorvine.pickle.Pickler.dispatch(Pickler.java:297)
+	at net.razorvine.pickle.Pickler.save(Pickler.java:185)
+	at net.razorvine.pickle.Pickler.put_arrayOfObjects(Pickler.java:585)
+	at net.razorvine.pickle.Pickler.dispatch(Pickler.java:254)
+	at net.razorvine.pickle.Pickler.save(Pickler.java:185)
+	at net.razorvine.pickle.Pickler.dump(Pickler.java:155)
+	at net.razorvine.pickle.Pickler.dumps(Pickler.java:140)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.next(SerDeUtil.scala:92)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.next(SerDeUtil.scala:80)
+	at scala.collection.Iterator.foreach(Iterator.scala:943)
+	at scala.collection.Iterator.foreach$(Iterator.scala:943)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.foreach(SerDeUtil.scala:80)
+	at org.apache.spark.api.python.PythonRDD$.writeIteratorToStream(PythonRDD.scala:322)
+	at org.apache.spark.api.python.PythonRunner$$anon$2.writeIteratorToStream(PythonRunner.scala:751)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread.$anonfun$run$1(PythonRunner.scala:451)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread$$Lambda$3545/0x0000000841370c40.apply(Unknown Source)
+	at org.apache.spark.util.Utils$.logUncaughtExceptions(Utils.scala:1928)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread.run(PythonRunner.scala:282)
+Exception in thread "stdout writer for /home/researchuser2/venvs/project/bin/python" java.lang.OutOfMemoryError: Java heap space
+	at java.base/java.util.Arrays.copyOf(Arrays.java:3745)
+	at java.base/java.io.ByteArrayOutputStream.grow(ByteArrayOutputStream.java:120)
+	at java.base/java.io.ByteArrayOutputStream.ensureCapacity(ByteArrayOutputStream.java:95)
+	at java.base/java.io.ByteArrayOutputStream.write(ByteArrayOutputStream.java:156)
+	at java.base/java.io.OutputStream.write(OutputStream.java:122)
+	at net.razorvine.pickle.Pickler.put_string(Pickler.java:701)
+	at net.razorvine.pickle.Pickler.dispatch(Pickler.java:304)
+	at net.razorvine.pickle.Pickler.save(Pickler.java:185)
+	at org.apache.spark.sql.execution.python.EvaluatePython$RowPickler.pickle(EvaluatePython.scala:272)
+	at net.razorvine.pickle.Pickler.dispatch(Pickler.java:297)
+	at net.razorvine.pickle.Pickler.save(Pickler.java:185)
+	at net.razorvine.pickle.Pickler.put_arrayOfObjects(Pickler.java:585)
+	at net.razorvine.pickle.Pickler.dispatch(Pickler.java:254)
+	at net.razorvine.pickle.Pickler.save(Pickler.java:185)
+	at net.razorvine.pickle.Pickler.dump(Pickler.java:155)
+	at net.razorvine.pickle.Pickler.dumps(Pickler.java:140)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.next(SerDeUtil.scala:92)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.next(SerDeUtil.scala:80)
+	at scala.collection.Iterator.foreach(Iterator.scala:943)
+	at scala.collection.Iterator.foreach$(Iterator.scala:943)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.foreach(SerDeUtil.scala:80)
+	at org.apache.spark.api.python.PythonRDD$.writeIteratorToStream(PythonRDD.scala:322)
+	at org.apache.spark.api.python.PythonRunner$$anon$2.writeIteratorToStream(PythonRunner.scala:751)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread.$anonfun$run$1(PythonRunner.scala:451)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread$$Lambda$3545/0x0000000841370c40.apply(Unknown Source)
+	at org.apache.spark.util.Utils$.logUncaughtExceptions(Utils.scala:1928)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread.run(PythonRunner.scala:282)
+26/10/06 15:07:55 ERROR Utils: Uncaught exception in thread stdout writer for /home/researchuser2/venvs/project/bin/python
+java.lang.OutOfMemoryError: Java heap space
+	at java.base/java.util.Arrays.copyOf(Arrays.java:3745)
+	at java.base/java.io.ByteArrayOutputStream.toByteArray(ByteArrayOutputStream.java:211)
+	at net.razorvine.pickle.Pickler.dumps(Pickler.java:142)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.next(SerDeUtil.scala:92)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.next(SerDeUtil.scala:80)
+	at scala.collection.Iterator.foreach(Iterator.scala:943)
+	at scala.collection.Iterator.foreach$(Iterator.scala:943)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.foreach(SerDeUtil.scala:80)
+	at org.apache.spark.api.python.PythonRDD$.writeIteratorToStream(PythonRDD.scala:322)
+	at org.apache.spark.api.python.PythonRunner$$anon$2.writeIteratorToStream(PythonRunner.scala:751)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread.$anonfun$run$1(PythonRunner.scala:451)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread$$Lambda$3545/0x0000000841370c40.apply(Unknown Source)
+	at org.apache.spark.util.Utils$.logUncaughtExceptions(Utils.scala:1928)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread.run(PythonRunner.scala:282)
+Exception in thread "stdout writer for /home/researchuser2/venvs/project/bin/python" java.lang.OutOfMemoryError: Java heap space
+	at java.base/java.util.Arrays.copyOf(Arrays.java:3745)
+	at java.base/java.io.ByteArrayOutputStream.toByteArray(ByteArrayOutputStream.java:211)
+	at net.razorvine.pickle.Pickler.dumps(Pickler.java:142)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.next(SerDeUtil.scala:92)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.next(SerDeUtil.scala:80)
+	at scala.collection.Iterator.foreach(Iterator.scala:943)
+	at scala.collection.Iterator.foreach$(Iterator.scala:943)
+	at org.apache.spark.api.python.SerDeUtil$AutoBatchedPickler.foreach(SerDeUtil.scala:80)
+	at org.apache.spark.api.python.PythonRDD$.writeIteratorToStream(PythonRDD.scala:322)
+	at org.apache.spark.api.python.PythonRunner$$anon$2.writeIteratorToStream(PythonRunner.scala:751)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread.$anonfun$run$1(PythonRunner.scala:451)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread$$Lambda$3545/0x0000000841370c40.apply(Unknown Source)
+	at org.apache.spark.util.Utils$.logUncaughtExceptions(Utils.scala:1928)
+	at org.apache.spark.api.python.BasePythonRunner$WriterThread.run(PythonRunner.scala:282)
+26/10/06 15:08:00 ERROR Utils: Uncaught exception in thread stdout writer for /home/researchuser2/venvs/project/bin/python
+java.lang.OutOfMemoryError: Java heap space
+Exception in thread "stdout writer for /home/researchuser2/venvs/project/bin/python" java.lang.OutOfMemoryError: Java heap space
+[Stage 6:==============>                                            (1 + 3) / 4][Stage 6:==============>                                            (1 + 3) / 4][Stage 6:==============>                                            (1 + 3) / 4]

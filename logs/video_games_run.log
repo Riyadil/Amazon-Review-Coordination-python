@@ -1,0 +1,123 @@
+patched: create output dir before audit write
+Average Rating Deviation: 0.5000
+Verified Purchase Rate: 0.6000
+Average Helpful Votes: 0.0000
+Average Text Similarity: 0.0000
+Similar Review Pairs: 0
+Final Coordination Score: 0.4900
+
+Group #16
+Component ID: AE2ZPUGSX5QDJDPSZXSN6JF46MIQ
+Users: 2
+Edges: 1
+Repeated Groups: 3
+Reviews: 29
+Density: 1.0000
+Average Repetition: 3.0000
+Time Concentration: 0.7586
+Rating Agreement: 0.9334
+Average Rating Deviation: 0.7931
+Verified Purchase Rate: 1.0000
+Average Helpful Votes: 0.1034
+Average Text Similarity: 0.0000
+Similar Review Pairs: 0
+Final Coordination Score: 0.4871
+
+Group #17
+Component ID: AEWPQRTD2DAOWHZABLXHT5FUBZGA
+Users: 2
+Edges: 1
+Repeated Groups: 3
+Reviews: 11
+Density: 1.0000
+Average Repetition: 3.0000
+Time Concentration: 0.7273
+Rating Agreement: 0.9587
+Average Rating Deviation: 0.5364
+Verified Purchase Rate: 1.0000
+Average Helpful Votes: 0.6364
+Average Text Similarity: 0.0000
+Similar Review Pairs: 0
+Final Coordination Score: 0.4850
+
+Group #18
+Component ID: AEGE243GOKGMRSRTU6TWU5MBYEMA
+Users: 2
+Edges: 1
+Repeated Groups: 3
+Reviews: 35
+Density: 1.0000
+Average Repetition: 3.0000
+Time Concentration: 0.7143
+Rating Agreement: 0.9731
+Average Rating Deviation: 0.5743
+Verified Purchase Rate: 0.9429
+Average Helpful Votes: 0.1714
+Average Text Similarity: 0.0000
+Similar Review Pairs: 0
+Final Coordination Score: 0.4844
+
+Group #19
+Component ID: AE467OMQRMOWJ5JLNGUC4AEWACTA
+Users: 2
+Edges: 1
+Repeated Groups: 3
+Reviews: 47
+Density: 1.0000
+Average Repetition: 3.0000
+Time Concentration: 0.7234
+Rating Agreement: 0.9502
+Average Rating Deviation: 0.6851
+Verified Purchase Rate: 0.9362
+Average Helpful Votes: 0.2340
+Average Text Similarity: 0.0000
+Similar Review Pairs: 0
+Final Coordination Score: 0.4835
+
+Group #20
+Component ID: AEE63WXQCCFLJK6RIKDMXJM63UFQ
+Users: 2
+Edges: 1
+Repeated Groups: 3
+Reviews: 43
+Density: 1.0000
+Average Repetition: 3.0000
+Time Concentration: 0.6977
+Rating Agreement: 0.9886
+Average Rating Deviation: 0.6047
+Verified Purchase Rate: 0.9070
+Average Helpful Votes: 0.0930
+Average Text Similarity: 0.0000
+Similar Review Pairs: 0
+Final Coordination Score: 0.4835
+
+Saving component analysis results...
+Component results saved to: output/coordination_groups
+Text similarity results saved to: output/text_similarity
+Candidate group reviews saved to: output/suspicious_reviews
+
+Generating performance summary...
+Performance summary saved to: output/benchmark
+
+======================================================================
+PIPELINE COMPLETED SUCCESSFULLY
+======================================================================
+
+Enriched review output:
+output/amazon_output
+
+Component output:
+output/coordination_groups
+
+Text similarity output:
+output/text_similarity
+
+Candidate group review output:
+output/suspicious_reviews
+
+Performance output:
+output/benchmark
+
+Total runtime: 1003.00 seconds
+
+[exited with code 0]
